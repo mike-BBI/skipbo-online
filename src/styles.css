@@ -186,6 +186,9 @@ select { width: auto; padding: 6px 8px; }
   --card-h: 63px;
   --card-radius: 5px;
 }
+/* Thinner border on opponent cards — a 1px border on a 42px card reads
+   as much heavier than on a 64px hand card. */
+.opponent .sb-card { border-width: 0.5px; }
 .opponent .sb-card .center { font-size: 20px; letter-spacing: -1px; }
 .opponent .sb-card .corner { font-size: 10px; }
 .opponent .sb-card.wild .wild-logo { font-size: 6px; letter-spacing: 0; }
@@ -368,6 +371,11 @@ select { width: auto; padding: 6px 8px; }
 .my-discards-wrap {
   flex: 1;
   min-width: 0;
+  /* Slightly smaller than the hand cards so the two zones read as
+     distinct at a glance rather than one continuous row of cards. */
+  --card-w: 52px;
+  --card-h: 78px;
+  --card-radius: 5px;
 }
 .discard-row {
   display: flex;
@@ -940,6 +948,7 @@ select { width: auto; padding: 6px 8px; }
   .discard-row { gap: 6px; }
   .my-area { gap: 8px; }
   .my-stock-wrap { padding-right: 10px; }
+  .my-discards-wrap { --card-w: 44px; --card-h: 66px; }
   .build-label, .my-section-label { font-size: 10px; margin-bottom: 2px; }
   .top-bar { padding: 2px 4px; font-size: 12px; }
   .turn-banner { padding: 5px; font-size: 13px; }
