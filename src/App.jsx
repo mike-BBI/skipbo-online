@@ -280,12 +280,14 @@ export default function App() {
   function playCpuActions(state, actions, i) {
     if (i >= actions.length) {
       // Pause between CPU turns so the final move reads clearly.
-      cpuTimerRef.current = setTimeout(() => scheduleCpuTurn(state), 900);
+      cpuTimerRef.current = setTimeout(() => scheduleCpuTurn(state), currentGame.botBetweenTurns ?? 900);
       return;
     }
     const act = actions[i];
-    // Discards (turn-ender) get an extra beat to register visually.
-    const delay = act.type === 'discard' ? 1800 : 1500;
+    // Let the active game pick its own per-action cadence (Skip-Bo
+    // plays fast plays + slow discards; Bastra slows everything since
+    // each turn is a single card).
+    const delay = currentGame.botActionDelay ? currentGame.botActionDelay(act) : 1500;
     cpuTimerRef.current = setTimeout(() => {
       const res = applyAction(state, state.turn, act);
       if (!res.ok) {

@@ -12,8 +12,11 @@ export const bastraGame = {
   minPlayers: MIN_PLAYERS,
   maxPlayers: MAX_PLAYERS,
   defaultRules: { ...DEFAULT_RULES },
-  botActionDelay: () => 900,
-  botBetweenTurns: 500,
+  // Each turn is a single card play — give the move time to land so
+  // players can track the capture (or lack thereof) before the next
+  // seat goes.
+  botActionDelay: () => 1800,
+  botBetweenTurns: 1100,
   Game,
   Lobby,
 };
