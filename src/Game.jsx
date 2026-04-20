@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, EmptySlot, Stockpile, DiscardPile, Deck } from './Card.jsx';
 import { Chat } from './Chat.jsx';
 import { canPlayToBuild, SKIPBO } from './engine.js';
@@ -20,13 +20,28 @@ function BuildPileTop({ bp, onClick, className }) {
   );
 }
 
-// Curated, visually-distinct hue palette indexed by seat position in
-// turn order. Eight slots cover the max player count; the order is
-// hand-picked so neighboring seats never share a color family.
+// Curated, visually-distinct hue palette. The order is re-shuffled
+// once per game (using state.seed) so opponents get fresh colors each
+// time, but every client derives the same mapping from the same seed.
 const PLAYER_HUES = [210, 350, 45, 120, 280, 25, 175, 310];
-function playerHueByIndex(idx) {
-  if (idx < 0) return 153;
-  return PLAYER_HUES[idx % PLAYER_HUES.length];
+
+// Mulberry32 PRNG — fast, deterministic, and good enough for a quick
+// Fisher-Yates shuffle. Same seed → same sequence on every client.
+function seededShuffle(seed, arr) {
+  let s = (seed | 0) || 1;
+  const rand = () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 // selection: { from: 'hand'|'stock'|'discard', index?: number }
@@ -245,7 +260,13 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
   const yesCount = undoVote ? Object.values(undoVote.votes).filter((v) => v === true).length : 0;
   const noCount = undoVote ? Object.values(undoVote.votes).filter((v) => v === false).length : 0;
 
-  const activeHue = playerHueByIndex(state.playerOrder.indexOf(state.turn));
+  const shuffledPalette = useMemo(() => seededShuffle(state.seed || 0, PLAYER_HUES), [state.seed]);
+  const hueFor = (id) => {
+    const idx = state.playerOrder.indexOf(id);
+    if (idx < 0) return 153;
+    return shuffledPalette[idx % shuffledPalette.length];
+  };
+  const activeHue = hueFor(state.turn);
   const activePlayerName = state.turn === myId ? 'Your' : `${state.players[state.turn]?.name || 'Player'}'s`;
 
   return (
@@ -308,7 +329,7 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
 
       <div className="opponents">
         {opponents.map((op) => {
-          const hue = playerHueByIndex(state.playerOrder.indexOf(op.id));
+          const hue = hueFor(op.id);
           return (
           <div
             key={op.id}

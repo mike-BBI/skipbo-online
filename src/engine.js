@@ -84,6 +84,10 @@ export function createGame(playerIds, names, rules) {
     deckCount,
     startedAt: Date.now(),
     turnNumber: 1,
+    // Unique per-game value so clients can derive presentation choices
+    // (like player colors) that vary game-to-game yet agree across
+    // clients for a given game. Not used by engine logic itself.
+    seed: Math.floor(Math.random() * 0x7fffffff),
     players,
     playerOrder: [...playerIds],
     turn: playerIds[0],
