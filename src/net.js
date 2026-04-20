@@ -15,28 +15,36 @@ export function generateRoomCode() {
   return s;
 }
 
-// ICE servers — STUN for basic NAT, plus public TURN relays so players
+// ICE servers — STUN for basic NAT, plus TURN relays (Metered) so players
 // on symmetric NATs (corporate / carrier-grade / mobile) can still
 // connect. Without TURN, WebRTC fails for ~10–15% of network configs.
+const METERED_USERNAME = '81bdfc009715a994afe717e4';
+const METERED_CREDENTIAL = '+gVPSgVQkroQULoV';
 const PEER_CONFIG = {
   config: {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'stun:stun.relay.metered.ca:80' },
       {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
+        urls: 'turn:global.relay.metered.ca:80',
+        username: METERED_USERNAME,
+        credential: METERED_CREDENTIAL,
       },
       {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
+        urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+        username: METERED_USERNAME,
+        credential: METERED_CREDENTIAL,
       },
       {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
+        urls: 'turn:global.relay.metered.ca:443',
+        username: METERED_USERNAME,
+        credential: METERED_CREDENTIAL,
+      },
+      {
+        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+        username: METERED_USERNAME,
+        credential: METERED_CREDENTIAL,
       },
     ],
   },
