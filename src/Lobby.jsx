@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Chat } from './Chat.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS, requiredDecks } from './engine.js';
 
-export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, chatMessages, onSendChat, onLeave, error }) {
+export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, chatMessages, onSendChat, onLeave, error, peerStatus }) {
   const [editingName, setEditingName] = useState(false);
   const me = lobby.players.find((p) => p.id === myId);
   const [nameDraft, setNameDraft] = useState(me?.name || '');
@@ -20,6 +20,7 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
         <div>
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>Room code</div>
           <div className="room-code" style={{ fontSize: 28 }}>{lobby.roomCode}</div>
+          {peerStatus && <StatusIndicator status={peerStatus} />}
         </div>
         <button className="secondary" onClick={onLeave}>Leave</button>
       </div>
@@ -93,6 +94,21 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Chat</div>
         <Chat messages={chatMessages} onSend={onSendChat} compact />
       </div>
+    </div>
+  );
+}
+
+function StatusIndicator({ status }) {
+  let color = 'var(--muted)';
+  let text = '';
+  if (status.kind === 'connecting') { color = 'var(--gold)'; text = 'connecting…'; }
+  else if (status.kind === 'open') { color = 'var(--accent-2)'; text = 'connected'; }
+  else if (status.kind === 'disconnected') { color = 'var(--gold)'; text = 'reconnecting…'; }
+  else if (status.kind === 'error') { color = 'var(--danger)'; text = status.message || status.type; }
+  return (
+    <div style={{ fontSize: 10, color, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+      <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: `0 0 4px ${color}` }} />
+      <span>{text}</span>
     </div>
   );
 }

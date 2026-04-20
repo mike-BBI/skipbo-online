@@ -25,6 +25,7 @@ export default function App() {
   const [gameState, setGameState] = useState(null);
   const [chatMessages, setChatMessages] = useState([]);
   const [myId, setMyId] = useState(null);
+  const [peerStatus, setPeerStatus] = useState(null);
   const practiceStateRef = useRef(null);
   const cpuTimerRef = useRef(null);
   const recordedGameRef = useRef(false);
@@ -62,6 +63,7 @@ export default function App() {
     setGameState(null);
     setChatMessages([]);
     setMyId(null);
+    setPeerStatus(null);
     setMode(null);
     setError(null);
     setPhase('home');
@@ -87,6 +89,7 @@ export default function App() {
         hostName: name.trim(),
         hostProfileId: getProfile().id,
         onLobby, onState, onChat, onError: onErr,
+        onStatus: setPeerStatus,
       });
       setNet(h);
       setMode('host');
@@ -111,6 +114,7 @@ export default function App() {
         profileId: getProfile().id,
         onLobby, onState, onChat,
         onError: onErr,
+        onStatus: setPeerStatus,
         onWelcome: (id) => setMyId(id),
       });
       setNet(c);
@@ -222,8 +226,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="lobby">
-          <h1>Skip-Bo</h1>
-          <div className="tagline">Play online with friends · free · no install</div>
+          <h1>Mav Family Skip-Bo</h1>
 
           <div className="card-panel">
             <label style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Your name</label>
@@ -255,6 +258,7 @@ export default function App() {
           </div>
 
           {error && <div className="error">{error}</div>}
+          {peerStatus && <PeerStatusLine status={peerStatus} />}
 
           <button className="secondary" style={{ fontSize: 13 }} onClick={() => setPhase('stats')}>
             View stats
@@ -340,6 +344,7 @@ export default function App() {
           onSendChat={onSendChat}
           onLeave={goHome}
           error={error}
+          peerStatus={peerStatus}
         />
       </div>
     );
@@ -366,6 +371,47 @@ export default function App() {
   return (
     <div className="app">
       <div className="lobby"><div>Loading…</div></div>
+    </div>
+  );
+}
+
+export function PeerStatusLine({ status, compact }) {
+  if (!status) return null;
+  let color = 'var(--muted)';
+  let text = '';
+  if (status.kind === 'connecting') {
+    color = 'var(--gold)';
+    text = status.phase === 'host' ? 'Reaching host…' : 'Connecting to signaling…';
+  } else if (status.kind === 'open') {
+    color = 'var(--accent-2)';
+    text = compact ? 'Connected' : `Connected (peer ${status.peerId?.slice(-6) || ''})`;
+  } else if (status.kind === 'disconnected') {
+    color = 'var(--gold)';
+    text = 'Disconnected from signaling server';
+  } else if (status.kind === 'closed') {
+    color = 'var(--muted)';
+    text = 'Closed';
+  } else if (status.kind === 'error') {
+    color = 'var(--danger)';
+    text = status.message || `Error: ${status.type}`;
+  }
+  return (
+    <div style={{
+      fontSize: 11,
+      color,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      maxWidth: 400,
+      textAlign: 'center',
+    }}>
+      <span style={{
+        display: 'inline-block',
+        width: 8, height: 8, borderRadius: '50%',
+        background: color,
+        boxShadow: `0 0 6px ${color}`,
+      }} />
+      <span>{text}</span>
     </div>
   );
 }

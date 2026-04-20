@@ -27,8 +27,13 @@ function openPeer(id) {
 }
 
 // ───────────────────────────── HOST ─────────────────────────────
-export async function createHost({ roomCode, hostName, hostProfileId, onLobby, onState, onChat, onError }) {
+export async function createHost({ roomCode, hostName, hostProfileId, onLobby, onState, onChat, onError, onStatus }) {
+  onStatus?.({ kind: 'connecting' });
   const { peer } = await openPeer(hostPeerId(roomCode));
+  onStatus?.({ kind: 'open', peerId: peer.id });
+  peer.on('disconnected', () => onStatus?.({ kind: 'disconnected' }));
+  peer.on('close', () => onStatus?.({ kind: 'closed' }));
+  peer.on('error', (err) => onStatus?.({ kind: 'error', type: err.type, message: err.message || String(err) }));
 
   const HOST_ID = 'p_host';
   const conns = new Map(); // playerId -> DataConnection
@@ -246,16 +251,38 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
 }
 
 // ───────────────────────────── CLIENT ─────────────────────────────
-export async function createClient({ roomCode, name, profileId, onLobby, onState, onChat, onError, onWelcome }) {
+export async function createClient({ roomCode, name, profileId, onLobby, onState, onChat, onError, onWelcome, onStatus }) {
+  onStatus?.({ kind: 'connecting', phase: 'signaling' });
   const { peer } = await openPeer();
+  onStatus?.({ kind: 'connecting', phase: 'host', peerId: peer.id });
   const conn = peer.connect(hostPeerId(roomCode), { reliable: true });
 
-  await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Could not reach host. Check the room code.')), 10000);
-    conn.on('open', () => { clearTimeout(timeout); resolve(); });
-    conn.on('error', (err) => { clearTimeout(timeout); reject(err); });
+  peer.on('disconnected', () => onStatus?.({ kind: 'disconnected' }));
+  peer.on('close', () => onStatus?.({ kind: 'closed' }));
+  peer.on('error', (err) => {
+    onStatus?.({ kind: 'error', type: err.type, message: err.message || String(err) });
   });
 
+  try {
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Timed out reaching host. Usually this means the host is offline, behind a restrictive network, or a privacy extension is blocking signaling.')), 10000);
+      conn.on('open', () => { clearTimeout(timeout); resolve(); });
+      conn.on('error', (err) => {
+        clearTimeout(timeout);
+        const type = err.type || '';
+        let msg = err.message || String(err);
+        if (type === 'peer-unavailable') msg = `Room ${roomCode} not found. Check the code or ask the host to create a new one.`;
+        else if (type === 'network') msg = 'Signaling server unreachable. Check your connection or try disabling privacy extensions (Guardio, NortonSafeWeb, etc.).';
+        else if (type === 'browser-incompatible') msg = 'This browser does not support WebRTC.';
+        const e = new Error(msg); e.type = type; reject(e);
+      });
+    });
+  } catch (err) {
+    onStatus?.({ kind: 'error', type: err.type || 'connect-timeout', message: err.message });
+    throw err;
+  }
+
+  onStatus?.({ kind: 'open', peerId: peer.id });
   conn.send({ type: 'hello', name, profileId });
 
   let myId = null;
