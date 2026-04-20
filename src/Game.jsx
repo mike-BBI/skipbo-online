@@ -23,7 +23,10 @@ function BuildPileTop({ bp, onClick, className }) {
 // Curated, visually-distinct hue palette. The order is re-shuffled
 // once per game (using state.seed) so opponents get fresh colors each
 // time, but every client derives the same mapping from the same seed.
-const PLAYER_HUES = [210, 350, 45, 120, 280, 25, 175, 310];
+// Entries are spaced 45° apart around the color wheel so no two hues
+// can read as "the same color" — important because the palette size
+// equals MAX_PLAYERS, so every seat always gets a distinct hue.
+const PLAYER_HUES = [20, 65, 110, 155, 200, 245, 290, 335];
 
 // Mulberry32 PRNG — fast, deterministic, and good enough for a quick
 // Fisher-Yates shuffle. Same seed → same sequence on every client.
@@ -60,22 +63,12 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
 
   const me = state.players[myId];
   const isMyTurn = state.turn === myId && !state.winner;
-  const opponents = (() => {
-    const others = state.playerOrder.filter((id) => id !== myId);
-    if (others.length === 0) return [];
-    // Anchor the left-most slot on whoever is "up". If it's my turn,
-    // the anchor is the opponent immediately after me in turn order.
-    let anchor;
-    if (state.turn === myId) {
-      const myPos = state.playerOrder.indexOf(myId);
-      anchor = state.playerOrder[(myPos + 1) % state.playerOrder.length];
-    } else {
-      anchor = state.turn;
-    }
-    const ai = others.indexOf(anchor);
-    const rotated = ai >= 0 ? [...others.slice(ai), ...others.slice(0, ai)] : others;
-    return rotated.map((id) => state.players[id]);
-  })();
+  // Opponents stay in fixed turn order — scroll-into-view snaps to the
+  // active player so you can track whose turn it is without reordering
+  // the pane (which was visually disorienting mid-game).
+  const opponents = state.playerOrder
+    .filter((id) => id !== myId)
+    .map((id) => state.players[id]);
 
   // Pulse the deck briefly whenever the deck count decreases (a card was drawn).
   const [drawPulse, setDrawPulse] = useState(false);
@@ -357,8 +350,10 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
         })}
       </div>
 
-      {!state.winner && isMyTurn && (
-        <div className="turn-banner">Your turn</div>
+      {!state.winner && (
+        isMyTurn
+          ? <div className="turn-banner">Your turn</div>
+          : <div className="turn-banner waiting">{state.players[state.turn]?.name || 'Someone'}'s turn</div>
       )}
 
       <div className="build-area">
