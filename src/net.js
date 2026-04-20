@@ -146,7 +146,8 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
       conns.set(pid, conn);
     });
     conn.on('data', (msg) => {
-      handleMessage(pid, msg, conn);
+      const newPid = handleMessage(pid, msg, conn);
+      if (newPid && newPid !== pid) pid = newPid;
     });
     conn.on('close', () => {
       if (!pid) return;
@@ -182,10 +183,12 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
       if (lobby.started && profileId) {
         const seat = lobby.players.find((p) => p.profileId === profileId);
         if (seat && botControlled.has(seat.id)) {
-          // Move the connection over to the original player id.
+          // Move the connection over to the original player id. Return
+          // the new pid so the connection closure updates its captured
+          // value — otherwise future messages would still be handled
+          // under the throwaway peer id and actions would mis-route.
           conns.delete(pid);
-          pid = seat.id;
-          conns.set(pid, conn);
+          conns.set(seat.id, conn);
           botControlled.delete(seat.id);
           seat.name = cleanName;
           conn.send({ type: 'welcome', you: seat.id, lobby });
@@ -195,7 +198,7 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
             from: 'system', name: 'system',
             text: `${cleanName} reconnected.`, ts: Date.now(),
           });
-          return;
+          return seat.id;
         }
       }
 
