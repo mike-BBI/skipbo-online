@@ -233,14 +233,17 @@ export async function createHost({ game: gameSpec, roomCode, hostName, hostProfi
     broadcastState();
   }
 
-  // If the current turn belongs to a disconnected player, let the CPU
-  // bot play out their turn so the game doesn't stall. Same pacing as
-  // practice-mode so remaining humans can follow the moves.
+  // If the current turn belongs to a CPU seat (either a player added
+  // as CPU in the lobby or a human who disconnected mid-game), let the
+  // CPU bot play out their turn. Difficulty is read from the lobby
+  // player record; dropped humans fall back to 'normal'.
   function scheduleBotIfNeeded() {
     if (botTimer) { clearTimeout(botTimer); botTimer = null; }
     if (!game || game.winner) return;
     if (!botControlled.has(game.turn)) return;
-    const plan = cpuPlan(game, game.turn);
+    const seat = lobby.players.find((p) => p.id === game.turn);
+    const difficulty = seat?.cpuDifficulty || 'normal';
+    const plan = cpuPlan(game, game.turn, difficulty);
     runBotActions(plan, 0);
   }
   function runBotActions(plan, i) {
@@ -399,9 +402,64 @@ export async function createHost({ game: gameSpec, roomCode, hostName, hostProfi
       if (!clean.trim()) return;
       broadcastChat({ from: HOST_ID, name: lobby.players[0].name, text: clean, ts: Date.now() });
     },
+    addCpu(difficulty = 'normal') {
+      if (lobby.started) return { ok: false, error: 'Game already started' };
+      if (lobby.players.length >= maxPlayers) return { ok: false, error: 'Room is full' };
+      if (!['easy', 'normal', 'hard'].includes(difficulty)) difficulty = 'normal';
+      // Pick the lowest unused CPU seat number so removing mid-lobby
+      // and re-adding gives a predictable "CPU 1, CPU 2, ..." ordering.
+      const usedNums = new Set(
+        lobby.players
+          .filter((p) => p.isCpu)
+          .map((p) => parseInt(p.id.replace(/^cpu_/, ''), 10))
+          .filter((n) => !Number.isNaN(n)),
+      );
+      let n = 1;
+      while (usedNums.has(n)) n++;
+      const id = `cpu_${n}`;
+      lobby.players.push({
+        id,
+        name: `CPU ${n}`,
+        profileId: null,
+        isCpu: true,
+        cpuDifficulty: difficulty,
+      });
+      botControlled.add(id);
+      broadcastLobby();
+      return { ok: true };
+    },
+    removeCpu(id) {
+      if (lobby.started) return { ok: false, error: 'Game already started' };
+      const seat = lobby.players.find((p) => p.id === id);
+      if (!seat || !seat.isCpu) return { ok: false, error: 'Not a CPU seat' };
+      lobby.players = lobby.players.filter((p) => p.id !== id);
+      botControlled.delete(id);
+      broadcastLobby();
+      return { ok: true };
+    },
+    setCpuDifficulty(id, difficulty) {
+      if (lobby.started) return { ok: false, error: 'Cannot change difficulty mid-game' };
+      if (!['easy', 'normal', 'hard'].includes(difficulty)) {
+        return { ok: false, error: 'Invalid difficulty' };
+      }
+      const seat = lobby.players.find((p) => p.id === id);
+      if (!seat || !seat.isCpu) return { ok: false, error: 'Not a CPU seat' };
+      seat.cpuDifficulty = difficulty;
+      broadcastLobby();
+      return { ok: true };
+    },
     startGame() {
       if (lobby.started) return { ok: false, error: 'Already started' };
       if (lobby.players.length < minPlayers) return { ok: false, error: `Need ≥${minPlayers} players` };
+      // P2P rooms require at least one non-host human. A host-only
+      // room with CPUs is just "Play vs CPU" with extra steps.
+      const humans = lobby.players.filter((p) => !p.isCpu);
+      if (humans.length < 2) {
+        return {
+          ok: false,
+          error: 'Need at least one other human in the room. Use "Play vs CPU" for solo games.',
+        };
+      }
       const ids = lobby.players.map((p) => p.id);
       const names = Object.fromEntries(lobby.players.map((p) => [p.id, p.name]));
       try {

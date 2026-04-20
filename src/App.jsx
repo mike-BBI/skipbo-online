@@ -43,7 +43,16 @@ export default function App() {
   const [joinCode, setJoinCode] = useState('');
   const [error, setError] = useState(null);
   const [cpuCount, setCpuCount] = useState(2);
+  const [cpuDifficulties, setCpuDifficulties] = useState(['normal', 'normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
   const [practiceRules, setPracticeRules] = useState(DEFAULT_PRACTICE_RULES);
+  const setCpuDifficultyAt = (idx, value) => {
+    setCpuDifficulties((prev) => {
+      const next = [...prev];
+      while (next.length <= idx) next.push('normal');
+      next[idx] = value;
+      return next;
+    });
+  };
 
   const [net, setNet] = useState(null); // host or client handle
   const [lobbyState, setLobbyState] = useState(null);
@@ -258,6 +267,12 @@ export default function App() {
       // Link the human seat to the current profile so recorded games
       // know which profile to credit. CPUs stay null.
       if (g.players[HUMAN_ID]) g.players[HUMAN_ID].profileId = getProfile().id;
+      // Stamp each CPU player with the difficulty picked on the setup
+      // screen so scheduleCpuTurn can look it up on each turn.
+      for (let i = 0; i < effectiveCpus; i++) {
+        const id = `cpu${i + 1}`;
+        if (g.players[id]) g.players[id].cpuDifficulty = cpuDifficulties[i] || 'normal';
+      }
       practiceStateRef.current = g;
       setGameState(g);
       setMyId(HUMAN_ID);
@@ -273,7 +288,8 @@ export default function App() {
     if (cpuTimerRef.current) { clearTimeout(cpuTimerRef.current); cpuTimerRef.current = null; }
     if (!state || state.winner) return;
     if (state.turn === HUMAN_ID) return;
-    const plan = cpuPlan(state, state.turn);
+    const difficulty = state.players[state.turn]?.cpuDifficulty || 'normal';
+    const plan = cpuPlan(state, state.turn, difficulty);
     playCpuActions(state, plan, 0);
   }
 
@@ -516,6 +532,11 @@ export default function App() {
               options={Array.from({ length: maxCpus }, (_, i) => [i + 1, i + 1])}
               onChange={(v) => setCpuCount(v)}
             />
+            <CpuDifficultyList
+              count={safeCpus}
+              values={cpuDifficulties}
+              onChange={setCpuDifficultyAt}
+            />
           </div>
           <div className="card-panel">
             <div style={{ fontWeight: 600, marginBottom: 6 }}>Rules</div>
@@ -578,6 +599,11 @@ export default function App() {
               options={[1, 2, 3, 4, 5, 6, 7].map((n) => [n, n])}
               onChange={(v) => setCpuCount(v)}
             />
+            <CpuDifficultyList
+              count={cpuCount}
+              values={cpuDifficulties}
+              onChange={setCpuDifficultyAt}
+            />
           </div>
 
           <div className="card-panel">
@@ -625,6 +651,9 @@ export default function App() {
           onStart={onStart}
           onUpdateRules={onUpdateRules}
           onRename={onRename}
+          onAddCpu={mode === 'host' ? ((difficulty) => net?.addCpu?.(difficulty)) : null}
+          onRemoveCpu={mode === 'host' ? ((id) => net?.removeCpu?.(id)) : null}
+          onSetCpuDifficulty={mode === 'host' ? ((id, difficulty) => net?.setCpuDifficulty?.(id, difficulty)) : null}
           chatMessages={chatMessages}
           onSendChat={onSendChat}
           onLeave={goHome}
@@ -699,6 +728,45 @@ export function PeerStatusLine({ status, compact }) {
         boxShadow: `0 0 6px ${color}`,
       }} />
       <span>{text}</span>
+    </div>
+  );
+}
+
+function CpuDifficultyList({ count, values, onChange }) {
+  if (!count) return null;
+  const rows = [];
+  for (let i = 0; i < count; i++) {
+    const val = values[i] || 'normal';
+    rows.push(
+      <div
+        key={i}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}
+      >
+        <div style={{ fontSize: 13, color: 'var(--muted)', flex: 1 }}>CPU {i + 1}</div>
+        <select
+          value={val}
+          onChange={(e) => onChange(i, e.target.value)}
+          style={{
+            background: 'var(--panel-2)',
+            color: 'var(--text)',
+            border: '1px solid #2a5a48',
+            borderRadius: 6,
+            padding: '4px 8px',
+            font: 'inherit',
+            fontSize: 13,
+          }}
+        >
+          <option value="easy">Easy</option>
+          <option value="normal">Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>Difficulty</div>
+      {rows}
     </div>
   );
 }

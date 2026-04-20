@@ -375,9 +375,9 @@
    perpendicular across the stack so big plays stay visible. */
 .capture-stack {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   --stack-w: 48px;
   --stack-h: 68px;
 }
@@ -1887,14 +1887,63 @@ select { width: auto; padding: 6px 8px; }
 @media (max-width: 700px) {
   .winner-overlay.round-reveal { padding: 18px 12px; gap: 10px; }
   .reveal-title { font-size: 22px; }
-  .reveal-rows { gap: 10px; }
-  .reveal-row { width: 220px; padding: 12px 10px 10px; }
-  .reveal-cascade {
-    --cascade-card-w: 38px;
-    --cascade-card-h: 54px;
-    --cascade-step: 14px;
+  .reveal-rows { gap: 10px; max-width: 100%; }
+  /* On mobile: everything stacks vertically so nothing fights for width.
+     Grid area mappings ensure child components end up in source-order
+     slots regardless of their inline flex/row rules. */
+  .reveal-row {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "name  count"
+      "fan   fan"
+      "chips chips"
+      "score score";
+    gap: 8px 10px;
+    padding: 10px 12px;
+    align-items: center;
+    justify-items: stretch;
   }
-  .reveal-count-num { font-size: 22px; }
+  .reveal-row-name {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .reveal-row-count {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+    justify-self: end;
+  }
+  .reveal-count-num { font-size: 20px; }
+  .reveal-row-chips {
+    align-content: center;
+    justify-content: center;
+    max-width: 100%;
+  }
+  .reveal-row-score {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    padding-top: 6px;
+  }
+  .reveal-round, .reveal-total {
+    width: auto;
+    flex: 0 1 auto;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .reveal-cascade {
+    --cascade-card-w: 44px;
+    --cascade-card-h: 62px;
+    --cascade-step: 16px;
+    justify-self: center;
+  }
 }
 
 @media (max-width: 600px) {

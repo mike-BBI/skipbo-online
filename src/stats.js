@@ -58,6 +58,13 @@ export function getHistory() {
 export function recordGame(state, profileId, humanGameId, gameType = 'skipbo') {
   const history = getHistory();
   const winnerHumanId = state.winner;
+  // vsHuman = at least one seat that's not this profile has a non-null
+  // profileId, i.e. a real player other than me was in the match.
+  // CPU seats have profileId === null, so they don't count.
+  const vsHuman = state.playerOrder.some((id) => {
+    const pid = state.players[id]?.profileId;
+    return pid && pid !== profileId;
+  });
   const record = {
     id: uuid(),
     endedAt: Date.now(),
@@ -68,6 +75,7 @@ export function recordGame(state, profileId, humanGameId, gameType = 'skipbo') {
     winnerName: winnerHumanId ? state.players[winnerHumanId]?.name ?? null : null,
     didIWin: humanGameId != null && winnerHumanId === humanGameId,
     myProfileId: profileId,
+    vsHuman,
     rules: {
       stockSize: state.rules?.stockSize,
       handSize: state.rules?.handSize,
@@ -99,6 +107,7 @@ export function recordGame(state, profileId, humanGameId, gameType = 'skipbo') {
     gameType,
     startedAt: record.startedAt,
     endedAt: record.endedAt,
+    vsHuman,
   });
   return record;
 }
@@ -133,11 +142,16 @@ export function clearHistory() {
 }
 
 // Summary statistics computed over the local history array.
-export function computeStats(history = getHistory()) {
-  const total = history.length;
-  const wins = history.filter((r) => r.didIWin).length;
-  const totalTurns = history.reduce((s, r) => s + (r.turnCount || 0), 0);
-  const totalDuration = history.reduce((s, r) => s + (r.durationMs || 0), 0);
+// Pass { vsHumanOnly: true } to count only games that had at least one
+// other real player in them (CPU-only games excluded).
+export function computeStats(history = getHistory(), opts = {}) {
+  const filtered = opts.vsHumanOnly
+    ? history.filter((r) => r.vsHuman)
+    : history;
+  const total = filtered.length;
+  const wins = filtered.filter((r) => r.didIWin).length;
+  const totalTurns = filtered.reduce((s, r) => s + (r.turnCount || 0), 0);
+  const totalDuration = filtered.reduce((s, r) => s + (r.durationMs || 0), 0);
   const avgTurnsPerGame = total ? Math.round(totalTurns / total) : 0;
   const avgDurationMs = total ? Math.round(totalDuration / total) : 0;
   return {

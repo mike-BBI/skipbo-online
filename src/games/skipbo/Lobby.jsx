@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Chat } from '../../Chat.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS, requiredDecks } from './engine.js';
 
-export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, chatMessages, onSendChat, onLeave, error, peerStatus }) {
+export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, onAddCpu, onRemoveCpu, onSetCpuDifficulty, chatMessages, onSendChat, onLeave, error, peerStatus }) {
   const [editingName, setEditingName] = useState(false);
   const me = lobby.players.find((p) => p.id === myId);
   const [nameDraft, setNameDraft] = useState(me?.name || '');
@@ -12,7 +12,15 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
   const effectiveHand = rules.handSize ?? 5;
   const decks = requiredDecks(lobby.players.length, effectiveStock, effectiveHand);
 
-  const startDisabled = lobby.players.length < MIN_PLAYERS;
+  const humanCount = lobby.players.filter((p) => !p.isCpu).length;
+  const needsMorePlayers = lobby.players.length < MIN_PLAYERS;
+  const needsAnotherHuman = humanCount < 2;
+  const startDisabled = needsMorePlayers || needsAnotherHuman;
+  const startLabel = needsMorePlayers
+    ? `Need ≥${MIN_PLAYERS} players`
+    : needsAnotherHuman
+      ? 'Waiting for another human player to join'
+      : 'Start game';
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 600, margin: '0 auto', width: '100%' }}>
@@ -31,18 +39,17 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {lobby.players.map((p) => (
-            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>
-                {p.name}
-                {p.id === lobby.hostId && <span style={{ color: 'var(--accent)', marginLeft: 6 }}>(host)</span>}
-                {p.id === myId && <span style={{ color: 'var(--muted)', marginLeft: 6 }}>(you)</span>}
-              </span>
-              {p.id === myId && !editingName && (
-                <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setNameDraft(p.name); setEditingName(true); }}>
-                  Rename
-                </button>
-              )}
-            </div>
+            <PlayerRow
+              key={p.id}
+              player={p}
+              isMe={p.id === myId}
+              isHostSeat={p.id === lobby.hostId}
+              canEditName={p.id === myId && !editingName}
+              onBeginEditName={() => { setNameDraft(p.name); setEditingName(true); }}
+              canManageCpu={isHost && p.isCpu}
+              onSetCpuDifficulty={onSetCpuDifficulty}
+              onRemoveCpu={onRemoveCpu}
+            />
           ))}
         </div>
         {editingName && (
@@ -51,6 +58,15 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
             <button onClick={() => { onRename(nameDraft); setEditingName(false); }}>Save</button>
             <button className="secondary" onClick={() => setEditingName(false)}>Cancel</button>
           </div>
+        )}
+        {isHost && onAddCpu && lobby.players.length < MAX_PLAYERS && (
+          <button
+            className="secondary"
+            style={{ marginTop: 10, padding: '6px 12px', fontSize: 13 }}
+            onClick={() => onAddCpu('normal')}
+          >
+            + Add CPU
+          </button>
         )}
       </div>
 
@@ -83,9 +99,7 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
       </div>
 
       {isHost && (
-        <button onClick={onStart} disabled={startDisabled}>
-          {startDisabled ? `Need ≥${MIN_PLAYERS} players` : `Start game`}
-        </button>
+        <button onClick={onStart} disabled={startDisabled}>{startLabel}</button>
       )}
       {!isHost && <div style={{ textAlign: 'center', color: 'var(--muted)' }}>Waiting for host to start…</div>}
       {error && <div className="error">{error}</div>}
@@ -93,6 +107,46 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Chat</div>
         <Chat messages={chatMessages} onSend={onSendChat} compact />
+      </div>
+    </div>
+  );
+}
+
+function PlayerRow({ player, isMe, isHostSeat, canEditName, onBeginEditName, canManageCpu, onSetCpuDifficulty, onRemoveCpu }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {player.isCpu && <span style={{ color: 'var(--muted)', marginRight: 6 }}>🤖</span>}
+        {player.name}
+        {isHostSeat && <span style={{ color: 'var(--accent)', marginLeft: 6 }}>(host)</span>}
+        {isMe && <span style={{ color: 'var(--muted)', marginLeft: 6 }}>(you)</span>}
+      </span>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+        {canManageCpu && (
+          <>
+            <select
+              value={player.cpuDifficulty || 'normal'}
+              onChange={(e) => onSetCpuDifficulty?.(player.id, e.target.value)}
+              style={{ padding: '2px 6px', fontSize: 12, borderRadius: 6, background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid #334155' }}
+            >
+              <option value="easy">Easy</option>
+              <option value="normal">Normal</option>
+              <option value="hard">Hard</option>
+            </select>
+            <button
+              className="secondary"
+              style={{ padding: '4px 8px', fontSize: 12 }}
+              onClick={() => onRemoveCpu?.(player.id)}
+            >
+              Remove
+            </button>
+          </>
+        )}
+        {canEditName && (
+          <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={onBeginEditName}>
+            Rename
+          </button>
+        )}
       </div>
     </div>
   );
