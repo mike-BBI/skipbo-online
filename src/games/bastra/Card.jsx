@@ -1,9 +1,12 @@
+import { useEffect, useRef } from 'react';
 import { cardLabel } from './engine.js';
 
-// Card art is rendered by the cardmeister custom element
-// (<playing-card cid="...">) — a single script registered in
-// index.html that draws each card as clean inline SVG. One element
-// per card, no sprite alignment headaches.
+// Card art is rendered by the cardmeister custom element. React's
+// reconciliation + the custom element's attribute handling has been
+// unreliable across our usage (we saw stale SVGs lingering after the
+// data changed). To sidestep that, we create the <playing-card>
+// element imperatively every time the card changes — guaranteed
+// fresh element, guaranteed fresh SVG.
 
 const SUIT_NAME = { S: 'Spades', H: 'Hearts', D: 'Diamonds', C: 'Clubs' };
 const RANK_NAME = {
@@ -19,6 +22,19 @@ function cidFor(card) {
 }
 
 export function PlayingCard({ card, faceDown, onClick, className = '', selected, style }) {
+  const hostRef = useRef(null);
+  const cid = !faceDown && card ? cidFor(card) : null;
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    host.replaceChildren();
+    if (!cid) return;
+    const pc = document.createElement('playing-card');
+    pc.setAttribute('cid', cid);
+    host.appendChild(pc);
+  }, [cid]);
+
   if (faceDown) {
     return (
       <div className={`pc face-down ${className}`} onClick={onClick} style={style} />
@@ -29,12 +45,12 @@ export function PlayingCard({ card, faceDown, onClick, className = '', selected,
   }
   return (
     <div
+      ref={hostRef}
       className={`pc pc-svg ${selected ? 'selected' : ''} ${className}`}
       onClick={onClick}
       style={style}
       aria-label={cardLabel(card)}
-    >
-      <playing-card cid={cidFor(card)} />
-    </div>
+      data-cid={cid}
+    />
   );
 }

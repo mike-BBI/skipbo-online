@@ -64,22 +64,29 @@ export function cardLabel(card) {
   return `${RANK_LABELS[card.rank] || card.rank}${SUIT_SYMBOLS[card.suit] || card.suit}`;
 }
 
+// Deal the initial table, guaranteeing no Jacks end up face-up.
+// Any Jack that would be dealt gets reinserted at a random spot in
+// the deck and a fresh card is drawn until every table card is a
+// non-Jack. Mutates `deck` in place and returns the table array.
+function dealJacklessTable(deck, size) {
+  const table = deck.splice(0, size);
+  for (let i = 0; i < table.length; i++) {
+    while (table[i] && table[i].rank === RANK_JACK) {
+      const insertAt = Math.floor(Math.random() * (deck.length + 1));
+      deck.splice(insertAt, 0, table[i]);
+      table[i] = deck.shift();
+    }
+  }
+  return table;
+}
+
 export function createGame(playerIds, names = {}, rulesIn = {}) {
   if (playerIds.length < MIN_PLAYERS) throw new Error(`Bastra needs at least ${MIN_PLAYERS} players`);
   if (playerIds.length > MAX_PLAYERS) throw new Error(`Bastra supports at most ${MAX_PLAYERS} players`);
 
   const rules = { ...DEFAULT_RULES, ...rulesIn };
   const deck = shuffle(buildDeck());
-
-  // Spec quirk: if the first table card is a Jack the round can start
-  // stacked in the dealer's favor. Re-seed by putting the jack back
-  // and drawing again until the top table card isn't one.
-  while (deck[0] && deck[0].rank === RANK_JACK) {
-    const jack = deck.shift();
-    deck.push(jack);
-  }
-
-  const table = deck.splice(0, rules.tableInitSize);
+  const table = dealJacklessTable(deck, rules.tableInitSize);
 
   const players = {};
   for (const id of playerIds) {
@@ -95,6 +102,8 @@ export function createGame(playerIds, names = {}, rulesIn = {}) {
     };
   }
 
+  const starterId = playerIds[Math.floor(Math.random() * playerIds.length)];
+
   return {
     rules,
     startedAt: Date.now(),
@@ -102,7 +111,7 @@ export function createGame(playerIds, names = {}, rulesIn = {}) {
     seed: Math.floor(Math.random() * 0x7fffffff),
     players,
     playerOrder: [...playerIds],
-    turn: playerIds[0],
+    turn: starterId,
     deck,
     table,
     lastCapturer: null,
@@ -123,11 +132,7 @@ function startNextRound(state) {
   state.roundScores = null;
 
   let deck = shuffle(buildDeck());
-  while (deck[0] && deck[0].rank === RANK_JACK) {
-    const jack = deck.shift();
-    deck.push(jack);
-  }
-  state.table = deck.splice(0, state.rules.tableInitSize);
+  state.table = dealJacklessTable(deck, state.rules.tableInitSize);
   state.lastCapturer = null;
 
   for (const id of state.playerOrder) {
@@ -139,9 +144,9 @@ function startNextRound(state) {
   }
   state.deck = deck;
 
-  // Rotate the opening seat so advantage moves around the table.
-  const turnIdx = state.playerOrder.indexOf(state.turn);
-  state.turn = state.playerOrder[(turnIdx + 1) % state.playerOrder.length];
+  // Randomize the opening seat each round so no one gets the
+  // first-to-act advantage systematically.
+  state.turn = state.playerOrder[Math.floor(Math.random() * state.playerOrder.length)];
   state.turnNumber = 1;
   state.log.push(`Round ${state.round} begins.`);
 }
@@ -210,17 +215,27 @@ function applyCapture(next, playerId, card, tableIndices) {
   // special "capture-all" rule does it.
   if (card.rank === RANK_JACK) {
     if (next.table.length === 0) {
-      next.table.push(card);
-      next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
-      next.lastMove = { playerId, card, capturedCards: [], bastra: false, placed: true };
+      // House rule: a Jack played onto an empty table goes straight
+      // to the player's capture pile (rather than sitting on the
+      // table as a lone Jack waiting to be captured). Keeps Jacks
+      // strictly positive-value for the player who holds them.
+      p.captures.push(card);
+      next.lastCapturer = playerId;
+      next.log.push(`${p.name} played ${cardLabel(card)} — nothing to sweep, captured solo.`);
+      next.lastMove = {
+        playerId, card, capturedCards: [], capturedPositions: [], bastra: false, placed: false,
+      };
       return { ok: true };
     }
     const swept = next.table.slice();
+    const sweptPositions = swept.map((_, i) => i);
     p.captures.push(card, ...swept);
     next.lastCapturer = playerId;
     next.table = [];
     next.log.push(`${p.name} played ${cardLabel(card)} → captured ${swept.length}.`);
-    next.lastMove = { playerId, card, capturedCards: swept, bastra: false, placed: false };
+    next.lastMove = {
+      playerId, card, capturedCards: swept, capturedPositions: sweptPositions, bastra: false, placed: false,
+    };
     return { ok: true };
   }
 
@@ -233,9 +248,12 @@ function applyCapture(next, playerId, card, tableIndices) {
   }
 
   if (selected.length === 0) {
+    const placedIndex = next.table.length;
     next.table.push(card);
     next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
-    next.lastMove = { playerId, card, capturedCards: [], bastra: false, placed: true };
+    next.lastMove = {
+      playerId, card, capturedCards: [], capturedPositions: [], bastra: false, placed: true, placedIndex,
+    };
     return { ok: true };
   }
 
@@ -255,7 +273,9 @@ function applyCapture(next, playerId, card, tableIndices) {
   next.log.push(
     `${p.name} played ${cardLabel(card)} → captured ${selected.length} card${selected.length === 1 ? '' : 's'}${bastra ? ' (Bastra!)' : ''}.`,
   );
-  next.lastMove = { playerId, card, capturedCards: selected, bastra, placed: false };
+  next.lastMove = {
+    playerId, card, capturedCards: selected, capturedPositions: [...tableIndices], bastra, placed: false,
+  };
   return { ok: true };
 }
 
@@ -372,5 +392,28 @@ export function applyAction(state, playerId, action) {
   endRoundIfDone(next);
 
   next.version += 1;
+  if (import.meta.env?.DEV) debugAssertNoDuplicates(next);
   return { ok: true, state: next };
+}
+
+// Catch any bug that duplicates a card. Runs in dev only.
+function debugAssertNoDuplicates(state) {
+  const seen = new Map();
+  const check = (card, where) => {
+    if (!card || typeof card !== 'object') return;
+    const k = `${card.rank}-${card.suit}`;
+    if (seen.has(k)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[Bastra] duplicate card ${k} — also seen in ${seen.get(k)}, now in ${where}`);
+    } else {
+      seen.set(k, where);
+    }
+  };
+  for (const c of state.table || []) check(c, 'table');
+  for (const c of state.deck || []) check(c, 'deck');
+  for (const id of state.playerOrder || []) {
+    const p = state.players[id];
+    for (const c of p.hand || []) check(c, `${id}.hand`);
+    for (const c of p.captures || []) check(c, `${id}.captures`);
+  }
 }

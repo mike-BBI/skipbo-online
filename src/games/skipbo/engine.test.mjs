@@ -15,9 +15,21 @@ for (let n = 1; n <= 12; n++) {
   assert(d.filter((c) => c === n).length === 12, `12 copies of ${n}`);
 }
 
+// Starter is now randomized, so loop until we get the seat we want.
+// Keeps each assertion deterministic without needing to thread a
+// starter option through the engine API.
+function createWithStarter(ids, names, starter) {
+  let g;
+  for (let i = 0; i < 500; i++) {
+    g = createGame(ids, names);
+    if (g.turn === starter) return g;
+  }
+  throw new Error(`could not force starter ${starter} after 500 tries`);
+}
+
 console.log('\nGame creation');
-const g = createGame(['a', 'b'], { a: 'Alice', b: 'Bob' });
-assert(g.turn === 'a', 'alice goes first');
+const g = createWithStarter(['a', 'b'], { a: 'Alice', b: 'Bob' }, 'a');
+assert(g.turn === 'a', 'alice goes first (forced)');
 assert(g.players.a.stock.length === 30, 'alice has 30 stock cards');
 assert(g.players.b.stock.length === 30, 'bob has 30 stock cards');
 assert(g.players.a.hand.length === 5, 'alice has 5 hand cards');
@@ -25,7 +37,7 @@ assert(g.players.b.hand.length === 0, 'bob has 0 hand cards pregame');
 assert(g.buildPiles.length === 4, '4 build piles');
 
 console.log('\nForce a state where alice has a 1 to play');
-let s = createGame(['a', 'b'], { a: 'Alice', b: 'Bob' });
+let s = createWithStarter(['a', 'b'], { a: 'Alice', b: 'Bob' }, 'a');
 s.players.a.hand = [1, 5, 7, SKIPBO, 12];
 s.players.a.stock = [2, 3, 4, 9];
 // play the 1
@@ -42,7 +54,7 @@ r = applyAction(r.state, 'a', { type: 'play', from: 'hand', index: 0, buildPile:
 assert(!r.ok, 'cannot play 5 when 3 is expected');
 
 console.log('\nDiscard ends turn');
-let s2 = createGame(['a', 'b'], { a: 'Alice', b: 'Bob' });
+let s2 = createWithStarter(['a', 'b'], { a: 'Alice', b: 'Bob' }, 'a');
 const hand0 = s2.players.a.hand[0];
 let r2 = applyAction(s2, 'a', { type: 'discard', handIndex: 0, discardPile: 0 });
 assert(r2.ok, 'alice discards');

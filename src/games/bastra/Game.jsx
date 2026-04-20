@@ -103,20 +103,18 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const captureIsValid = selectedCard ? isValidCapture(selectedCard.rank, selectedRanks) : false;
   const isJackSelected = selectedCard?.rank === RANK_JACK;
 
+  // Either-order selection: the player can click a card on the table
+  // first to start building a capture set, then tap the hand card
+  // that completes it — or vice versa. The selection state in each
+  // area is independent; clicking a different hand card just swaps
+  // which one is selected without dropping the table selection.
   const toggleHandSelect = (i) => {
     if (!isMyTurn || state.winner) return;
-    if (selectedHandIdx === i) {
-      setSelectedHandIdx(null);
-      setSelectedTable([]);
-    } else {
-      setSelectedHandIdx(i);
-      setSelectedTable([]);
-    }
+    setSelectedHandIdx((cur) => (cur === i ? null : i));
   };
 
   const toggleTableSelect = (i) => {
     if (!isMyTurn || state.winner) return;
-    if (selectedHandIdx == null) return;
     if (isJackSelected) return; // Jack auto-sweeps; no manual selection
     setSelectedTable((cur) =>
       cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]
@@ -246,51 +244,61 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
                   card={c}
                   onClick={() => toggleTableSelect(i)}
                   selected={sel}
-                  className={selectedHandIdx != null && !isJackSelected && isMyTurn ? 'playable' : ''}
+                  className={isMyTurn && !isJackSelected ? 'playable' : ''}
                 />
               );
             })
           )}
         </div>
-        {selectedHandIdx != null && !state.winner && !state.roundEnded && (
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-            {isJackSelected ? (
-              <>
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {state.table.length > 0
-                    ? `Jack captures all ${state.table.length} table cards`
-                    : 'Jack has nothing to sweep — plays to the table'}
-                </span>
-                <button onClick={confirmPlay}>Play Jack</button>
-                <button className="secondary" onClick={cancelSelection}>Cancel</button>
-              </>
-            ) : selectedTable.length === 0 ? (
-              <>
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  Tap cards on the table to capture, or just play to the table.
-                </span>
-                <button onClick={confirmPlay}>Play to table</button>
-                <button className="secondary" onClick={cancelSelection}>Cancel</button>
-              </>
-            ) : captureIsValid ? (
-              <>
-                <span style={{ fontSize: 13, color: 'var(--accent-2)' }}>
-                  Capture {selectedTable.length} card{selectedTable.length === 1 ? '' : 's'}
-                  {selectedTable.length === state.table.length ? ' — Bastra!' : ''}
-                </span>
-                <button onClick={confirmPlay}>Capture</button>
-                <button className="secondary" onClick={cancelSelection}>Cancel</button>
-              </>
-            ) : (
-              <>
-                <span style={{ fontSize: 13, color: 'var(--danger)' }}>
-                  Selection doesn't add up.
-                </span>
-                <button className="secondary" onClick={() => setSelectedTable([])}>Clear</button>
-                <button className="secondary" onClick={cancelSelection}>Cancel</button>
-              </>
-            )}
-          </div>
+        {(selectedHandIdx != null || selectedTable.length > 0) && !state.winner && !state.roundEnded && (
+          (() => {
+            // Compute message + primary action once so the button row
+            // stays in a consistent layout regardless of the state.
+            let message = '';
+            let messageTone = 'muted'; // 'muted' | 'ok' | 'error'
+            let primaryLabel = null;
+            let primaryAction = null;
+
+            if (selectedHandIdx == null) {
+              message = `${selectedTable.length} table card${selectedTable.length === 1 ? '' : 's'} selected — tap a hand card`;
+            } else if (isJackSelected) {
+              message = state.table.length > 0
+                ? `Jack captures all ${state.table.length} table cards`
+                : 'Jack goes straight to your pile';
+              primaryLabel = 'Play Jack';
+              primaryAction = confirmPlay;
+            } else if (selectedTable.length === 0) {
+              message = '';
+              primaryLabel = 'Play to table';
+              primaryAction = confirmPlay;
+            } else if (captureIsValid) {
+              message = `Capture ${selectedTable.length} card${selectedTable.length === 1 ? '' : 's'}${selectedTable.length === state.table.length ? ' — Bastra!' : ''}`;
+              messageTone = 'ok';
+              primaryLabel = 'Capture';
+              primaryAction = confirmPlay;
+            } else {
+              message = "Selection doesn't add up";
+              messageTone = 'error';
+              primaryLabel = 'Clear';
+              primaryAction = () => setSelectedTable([]);
+            }
+            return (
+              <div className="capture-controls">
+                <div className={`capture-message tone-${messageTone}`}>{message || '\u00A0'}</div>
+                <div className="capture-buttons">
+                  <button className="secondary" onClick={cancelSelection}>Cancel</button>
+                  <button
+                    onClick={primaryAction || (() => {})}
+                    disabled={!primaryAction}
+                    className={primaryAction ? '' : 'secondary'}
+                    style={primaryAction ? {} : { visibility: 'hidden' }}
+                  >
+                    {primaryLabel || ' '}
+                  </button>
+                </div>
+              </div>
+            );
+          })()
         )}
       </div>
 

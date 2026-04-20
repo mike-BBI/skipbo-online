@@ -34,6 +34,16 @@
   width: 100%;
   height: 100%;
 }
+/* cardmeister renders as an <img> with an SVG viewBox whose ratio
+   (240/334 ≈ 0.719) is a hair wider than 5:7 (0.714). That sub-pixel
+   mismatch showed as a thin strip at the bottom. Force the image to
+   fill the wrapper exactly. */
+.pc-svg playing-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
 .pc.mini { width: 18px; height: 26px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
 .pc.playable { transition: transform 0.12s; }
 .pc.playable:hover { transform: translateY(-4px); }
@@ -104,26 +114,45 @@
   padding: 10px;
 }
 
-/* Bastra uses the whole vertical space (no stockpiles / build piles
-   eating room), so the table + hand cards can be bigger. */
-.board.bastra {
-  --card-w: 76px;
-  --card-h: 114px;
-  --card-radius: 8px;
+/* Capture controls: message line + a fixed-position button row so
+   the Cancel / primary button never shift between states. */
+.capture-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
 }
-.board.bastra .pc-corner-rank { font-size: 13px; }
-.board.bastra .pc-corner-suit { font-size: 11px; }
-.board.bastra .pc-pip { font-size: 13px; }
-.board.bastra .pc-center-pip { font-size: 48px; }
+.capture-message {
+  font-size: 13px;
+  min-height: 18px;
+  text-align: center;
+}
+.capture-message.tone-muted { color: var(--muted); }
+.capture-message.tone-ok    { color: var(--accent-2); }
+.capture-message.tone-error { color: var(--danger); }
+.capture-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  min-width: 280px;
+}
+.capture-buttons button { min-width: 120px; }
+
+/* Bastra uses the whole vertical space (no stockpiles / build piles
+   eating room), so the table + hand cards can be bigger. Dimensions
+   follow a 5:7 ratio so the cardmeister SVG fills the wrapper
+   without leftover whitespace at the bottom. */
+.board.bastra {
+  --card-w: 100px;
+  --card-h: 140px;
+  --card-radius: 5px;
+}
 @media (max-width: 600px) {
   .board.bastra {
-    --card-w: 60px;
-    --card-h: 90px;
+    --card-w: 72px;
+    --card-h: 100px;
   }
-  .board.bastra .pc-corner-rank { font-size: 11px; }
-  .board.bastra .pc-corner-suit { font-size: 9px; }
-  .board.bastra .pc-pip { font-size: 11px; }
-  .board.bastra .pc-center-pip { font-size: 42px; }
 }
 
 @keyframes bastra-celebrate {

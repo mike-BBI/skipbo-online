@@ -74,7 +74,12 @@ export function createGame(playerIds, names, rules) {
       discards,
     };
   }
-  players[playerIds[0]].hand = deck.splice(0, R.handSize);
+  // Pick a random starter so the room creator doesn't always get
+  // the first move. Only that player's hand is dealt up front —
+  // everyone else draws when their turn comes around.
+  const starterIdx = Math.floor(Math.random() * playerIds.length);
+  const starterId = playerIds[starterIdx];
+  players[starterId].hand = deck.splice(0, R.handSize);
 
   const buildPiles = [];
   for (let i = 0; i < R.buildPileCount; i++) buildPiles.push([]);
@@ -90,7 +95,7 @@ export function createGame(playerIds, names, rules) {
     seed: Math.floor(Math.random() * 0x7fffffff),
     players,
     playerOrder: [...playerIds],
-    turn: playerIds[0],
+    turn: starterId,
     deck,
     buildPiles,
     completedPiles: [],
