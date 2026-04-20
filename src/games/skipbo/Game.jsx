@@ -331,7 +331,7 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
             ref={op.id === state.turn ? (el) => el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }) : null}
           >
             <div className="opp-header">
-              <span className="opp-name">{op.name}{op.id === state.turn ? ' ▶' : ''}</span>
+              <span className="opp-name">{op.name}</span>
               <MiniHand count={op.hand.length} />
             </div>
             <div className="opp-body">

@@ -12,8 +12,22 @@
   user-select: none;
   overflow: hidden;
 }
+/* Styled playing-card back: classic red crosshatch with a double
+   border and a center crest-ish ornament, approximating a real
+   deck's back without any external asset. */
 .pc.face-down {
-  background: repeating-linear-gradient(45deg, #1d4ed8 0, #1d4ed8 8px, #0f172a 8px, #0f172a 16px);
+  background-color: #9d1515;
+  background-image:
+    /* centered inner ornament */
+    radial-gradient(ellipse at center, rgba(245, 232, 224, 0.85) 0, rgba(245, 232, 224, 0) 22%),
+    /* diamond / crosshatch weave */
+    repeating-linear-gradient(45deg, transparent 0 4px, rgba(0, 0, 0, 0.18) 4px 5px),
+    repeating-linear-gradient(-45deg, transparent 0 4px, rgba(255, 255, 255, 0.12) 4px 5px);
+  border: 2px solid #f5e8e0;
+  box-shadow:
+    inset 0 0 0 3px #6f0a0a,
+    inset 0 0 0 5px #f5e8e0,
+    0 2px 5px rgba(0, 0, 0, 0.45);
 }
 .pc.empty {
   background: transparent;
@@ -303,6 +317,209 @@
   transition: transform 0.12s;
 }
 
+/* Good-card banner: a smaller, quieter counterpart to the Bastra
+   celebrate — shown when the 10 of diamonds (3 pts) or 2 of clubs
+   (2 pts) is captured. Sits lower on the screen so it doesn't compete
+   with the Bastra celebration if both trigger in the same sweep. */
+@keyframes good-card-pop {
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.6); }
+  15%  { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  30%  { transform: translate(-50%, 0) scale(1); }
+  80%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -16px) scale(0.95); }
+}
+.good-card-celebrate {
+  position: fixed;
+  top: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: linear-gradient(135deg,
+    hsla(var(--player-hue, 48), 75%, 22%, 0.92),
+    hsla(var(--player-hue, 48), 60%, 10%, 0.92));
+  border: 2px solid hsl(var(--player-hue, 48), 80%, 60%);
+  color: #fff;
+  text-align: center;
+  z-index: 150;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  animation: good-card-pop 1.9s ease-out forwards;
+}
+.good-card-label {
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-size: 18px;
+  letter-spacing: 1.5px;
+  color: hsl(var(--player-hue, 48), 100%, 82%);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.good-card-name {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+.good-card-bonus {
+  font-family: "Lilita One", sans-serif;
+  font-size: 18px;
+  color: var(--gold);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+
+/* ───────── BASTRA CAPTURE STACK ─────────
+   A little pile of face-down cards whose depth roughly scales with how
+   many cards have been captured, plus each Bastra of the round laid
+   perpendicular across the stack so big plays stay visible. */
+.capture-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  --stack-w: 48px;
+  --stack-h: 68px;
+}
+.capture-stack-normal {
+  --stack-w: 62px;
+  --stack-h: 88px;
+}
+.capture-stack-pile {
+  position: relative;
+  /* Box wide enough to contain the stack PLUS a rotated bastra card
+     flush-left with the stack (which sticks out entirely to the right,
+     since the rotated card is taller-than-wide). */
+  width: calc(var(--stack-w) + (var(--stack-h) - var(--stack-w)) + 16px);
+  height: calc(var(--stack-h) + 10px);
+  flex-shrink: 0;
+}
+.capture-stack-layer.pc {
+  position: absolute;
+  top: 50%;
+  /* Stack sits on the left side of the pile container so the
+     perpendicular bastra has room to stick out to the right. Centering
+     the stack's left edge at 12px from container left, with a small
+     per-layer drift for depth. */
+  left: calc(var(--stack-w) / 2 + 8px);
+  width: var(--stack-w);
+  height: var(--stack-h);
+  margin: 0;
+  border-width: 1.5px;
+  z-index: 2;
+  transform: translate(-50%, -50%)
+             translate(calc(var(--layer, 0) * 1.4px), calc(var(--layer, 0) * -1.4px));
+}
+/* Top layers render above the bastra card so the Bastra marker looks
+   sandwiched in the pile rather than sitting loose on top. */
+.capture-stack-layer-top.pc {
+  z-index: 10;
+}
+.capture-stack-bastra.pc {
+  position: absolute;
+  top: 50%;
+  /* Left edge of the rotated bastra card aligns with the left edge of
+     the face-down stack. The card's visual center (after rotate 90°)
+     sits at stack-left + stack-h/2 since the rotated width equals the
+     card's unrotated height. */
+  left: calc(var(--stack-h) / 2 + 8px);
+  width: var(--stack-w);
+  height: var(--stack-h);
+  transform: translate(-50%, -50%)
+             translate(calc(var(--bastra-index, 0) * 3px), calc(var(--bastra-index, 0) * -4px))
+             rotate(90deg);
+  z-index: 6;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
+}
+.capture-stack.empty .capture-stack-pile {
+  /* Dashed placeholder sized identically to a populated pile so the
+     opponent/player container height stays stable across captures —
+     no expansion or reflow when the first card lands. */
+  position: relative;
+}
+.capture-stack.empty .capture-stack-pile::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(var(--stack-w) / 2 + 8px);
+  width: var(--stack-w);
+  height: var(--stack-h);
+  transform: translate(-50%, -50%);
+  border: 1.5px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+}
+.capture-stack-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(245, 179, 58, 0.4);
+  padding: 1px 8px;
+  border-radius: 10px;
+  min-width: 26px;
+  text-align: center;
+  letter-spacing: 1px;
+}
+.capture-stack.empty .capture-stack-count {
+  color: var(--muted);
+  border-color: rgba(255, 255, 255, 0.1);
+  background: transparent;
+}
+
+/* Bastra opponent box: bigger than Skip-Bo's so the capture stack has
+   room to breathe, and the hand count shrinks to a small badge since
+   exact count matters less when everyone plays one card at a time. */
+.board.bastra .opponent {
+  min-width: 130px;
+  padding: 10px 12px;
+  gap: 10px;
+}
+.board.bastra .opponent .opp-header {
+  font-size: 14px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.board.bastra .opp-hand-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  letter-spacing: 0.5px;
+}
+.board.bastra .opp-hand-count::before {
+  content: "✋";
+  margin-right: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* Player's own capture pile sits directly below the hand so you can
+   see your stack grow as you capture, mirroring the opponent rows. */
+.my-capture-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 600px) {
+  .capture-stack { --stack-w: 38px; --stack-h: 54px; }
+  .capture-stack-normal { --stack-w: 48px; --stack-h: 68px; }
+  .board.bastra .opponent { min-width: 110px; padding: 8px 10px; }
+  .board.bastra .opponent .opp-header { font-size: 12px; }
+  .board.bastra .opp-hand-count { font-size: 10px; padding: 1px 5px; }
+}
+
 
 :root {
   --bg: #0b3d2e;           /* felt-green table */
@@ -454,7 +671,15 @@ select { width: auto; padding: 6px 8px; }
   flex-direction: column;
   gap: 6px;
 }
+/* Active opponent: saturation does the heavy lifting — the fill pops
+   enough on its own that only a subtle halo pulse is needed. */
 .opponent.active {
+  background: linear-gradient(
+    180deg,
+    hsla(var(--player-hue, 153), 85%, 42%, 0.85),
+    hsla(var(--player-hue, 153), 70%, 24%, 0.95)
+  );
+  border-color: hsl(var(--player-hue, 153), 90%, 65%);
   animation: oppPulse 1.6s ease-in-out infinite;
 }
 @keyframes oppPulse {
@@ -1238,6 +1463,438 @@ select { width: auto; padding: 6px 8px; }
   background-clip: text;
   color: transparent;
   font-weight: 900;
+}
+
+/* ───────── Round / match reveal overlay ─────────
+   Dramatized scoring sequence: per-player row reveals, pile flips to
+   fan, card count ticks up, scoring chips pop in, round+cumulative
+   totals update. The overlay extends the base .winner-overlay but
+   makes room for wider content and a less intrusive backdrop. */
+.winner-overlay.round-reveal {
+  background: rgba(0, 0, 0, 0.88);
+  padding: 28px 20px;
+  gap: 14px;
+  overflow-y: auto;
+  justify-content: flex-start;
+  align-items: center;
+}
+.reveal-title {
+  font-size: 32px;
+  margin: 0;
+  background: linear-gradient(180deg, #fff, var(--gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 900;
+  text-align: center;
+}
+.reveal-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.reveal-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 820px;
+}
+.reveal-row {
+  display: grid;
+  grid-template-columns: 110px 1fr auto auto 110px;
+  grid-template-areas: "name fan count chips score";
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    hsla(var(--player-hue, 153), 55%, 25%, 0.55),
+    hsla(var(--player-hue, 153), 45%, 15%, 0.75)
+  );
+  border: 1.5px solid hsl(var(--player-hue, 153), 70%, 55%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.45s ease-out, transform 0.45s ease-out;
+}
+.reveal-row.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-row.me {
+  border-color: hsl(var(--player-hue, 153), 90%, 65%);
+  box-shadow: 0 0 0 2px hsla(var(--player-hue, 153), 90%, 65%, 0.35),
+              0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.reveal-row-name {
+  grid-area: name;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.reveal-row-name strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: hsl(var(--player-hue, 153), 100%, 88%);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.reveal-you {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+/* Horizontal cascade: cards overlap in a single straight line, flips
+   from face-down to face-up when .flipped is applied. Each card has a
+   staggered transition delay so the flip cascades left-to-right. */
+.reveal-cascade {
+  --cascade-card-w: 50px;
+  --cascade-card-h: 72px;
+  --cascade-step: 18px;
+  grid-area: fan;
+  position: relative;
+  width: 100%;
+  height: calc(var(--cascade-card-h) + 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reveal-cascade.empty {
+  justify-content: center;
+}
+.reveal-cascade.empty .reveal-cascade-empty {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+}
+.reveal-cascade-slot {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--cascade-card-w);
+  height: var(--cascade-card-h);
+  margin-left: calc(-1 * (var(--cascade-card-w) - var(--cascade-step)));
+  transform: rotateY(0);
+  transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(0.3, 0.9, 0.3, 1.1);
+  transition-delay: var(--delay, 0ms);
+}
+.reveal-cascade-slot:first-child { margin-left: 0; }
+.reveal-cascade.flipped .reveal-cascade-slot {
+  transform: rotateY(180deg);
+}
+.reveal-cascade-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 4px;
+}
+.reveal-cascade-back {
+  width: var(--cascade-card-w);
+  height: var(--cascade-card-h);
+}
+.reveal-cascade-front { transform: rotateY(180deg); }
+.reveal-cascade-front .pc {
+  width: var(--cascade-card-w);
+  height: var(--cascade-card-h);
+}
+.reveal-cascade-extra {
+  position: absolute;
+  right: -6px;
+  top: -10px;
+  font-size: 11px;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 1px 7px;
+  opacity: 0;
+  transition: opacity 0.3s ease-out 0.6s;
+}
+.reveal-cascade-extra.visible { opacity: 1; }
+
+/* ───────── Closeup phase (before summary) ─────────
+   Shows the human player's captures one at a time with a running
+   score tally — scoring cards pause with a chip, non-scoring cards
+   fly past. Ends by handing off to the group summary. */
+.winner-overlay.round-reveal.closeup-phase {
+  justify-content: center;
+  padding: 20px;
+}
+.closeup {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 760px;
+  width: 100%;
+  padding: 26px 22px 22px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    hsla(var(--player-hue, 48), 55%, 25%, 0.65),
+    hsla(var(--player-hue, 48), 45%, 14%, 0.9)
+  );
+  border: 2px solid hsl(var(--player-hue, 48), 90%, 65%);
+  box-shadow:
+    0 0 0 2px hsla(var(--player-hue, 48), 90%, 65%, 0.35),
+    0 6px 24px rgba(0, 0, 0, 0.55);
+}
+.closeup-title {
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-size: 26px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: hsl(var(--player-hue, 48), 100%, 88%);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  padding-bottom: 8px;
+  border-bottom: 1px solid hsla(var(--player-hue, 48), 70%, 55%, 0.4);
+  width: 100%;
+  text-align: center;
+}
+.closeup-cascade {
+  position: relative;
+  height: 180px;
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible;
+}
+@keyframes closeup-card-in {
+  0%   { opacity: 0; transform: translateY(-40px) scale(0.85); }
+  60%  { opacity: 1; transform: translateY(0) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes closeup-card-scored {
+  0%   { opacity: 0; transform: translateY(-40px) scale(0.85); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+  40%  { opacity: 1; transform: translateY(0) scale(1.15); box-shadow: 0 0 24px 8px rgba(245, 179, 58, 0.75); }
+  70%  { transform: translateY(0) scale(1.05); box-shadow: 0 0 20px 6px rgba(245, 179, 58, 0.55); }
+  100% { opacity: 1; transform: translateY(0) scale(1); box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45); }
+}
+.closeup-card {
+  position: absolute;
+  left: calc(var(--i, 0) * 20px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 90px;
+  height: 126px;
+  animation: closeup-card-in 0.22s ease-out both;
+  z-index: calc(var(--i, 0) + 1);
+}
+.closeup-card .pc { width: 90px; height: 126px; }
+.closeup-card.scored {
+  animation: closeup-card-scored 0.7s cubic-bezier(0.25, 0.9, 0.3, 1.1) both;
+}
+.closeup-chip-slot {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@keyframes closeup-chip-pop {
+  0%   { opacity: 0; transform: scale(0.6) translateY(6px); }
+  30%  { opacity: 1; transform: scale(1.15) translateY(0); }
+  60%  { transform: scale(1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.closeup-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  color: var(--text);
+  animation: closeup-chip-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.closeup-chip strong { color: var(--gold); font-weight: 800; font-size: 18px; }
+.closeup-chip.tone-gold {
+  background: linear-gradient(180deg, rgba(245, 179, 58, 0.45), rgba(208, 137, 8, 0.45));
+  border-color: var(--gold);
+  color: #fff;
+}
+.closeup-chip.tone-gold strong { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.closeup-chip.tone-hot {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.35), rgba(185, 28, 28, 0.4));
+  border-color: rgba(239, 68, 68, 0.7);
+}
+.closeup-chip.tone-accent {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.35), rgba(22, 101, 52, 0.45));
+  border-color: var(--accent-2);
+}
+.closeup-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 140px;
+  padding: 8px 18px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.closeup-total-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.closeup-total-val {
+  font-family: "Lilita One", sans-serif;
+  font-size: 36px;
+  color: var(--gold);
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+.closeup-skip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+@media (max-width: 700px) {
+  .closeup { padding: 14px 10px; gap: 12px; }
+  .closeup-title { font-size: 16px; }
+  .closeup-cascade { height: 140px; max-width: 100%; }
+  .closeup-card { width: 70px; height: 98px; left: calc(var(--i, 0) * 14px); }
+  .closeup-card .pc { width: 70px; height: 98px; }
+  .closeup-total-val { font-size: 28px; }
+}
+
+.reveal-row-count {
+  grid-area: count;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 56px;
+}
+.reveal-count-num {
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text);
+}
+.reveal-count-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.reveal-row-chips {
+  grid-area: chips;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-content: center;
+  max-width: 260px;
+}
+@keyframes reveal-chip-pop {
+  0%   { opacity: 0; transform: translateY(-6px) scale(0.8); }
+  60%  { opacity: 1; transform: translateY(0) scale(1.1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.reveal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  animation: reveal-chip-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.reveal-chip .reveal-chip-pts { color: var(--gold); font-weight: 800; }
+.reveal-chip.tone-gold {
+  background: linear-gradient(180deg, rgba(245, 179, 58, 0.4), rgba(208, 137, 8, 0.4));
+  border-color: var(--gold);
+  color: #fff;
+}
+.reveal-chip.tone-gold .reveal-chip-pts { color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.reveal-chip.tone-hot {
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.28), rgba(185, 28, 28, 0.32));
+  border-color: rgba(239, 68, 68, 0.65);
+}
+.reveal-chip.tone-accent {
+  background: linear-gradient(180deg, rgba(34, 197, 94, 0.28), rgba(22, 101, 52, 0.36));
+  border-color: var(--accent-2);
+}
+
+.reveal-row-score {
+  grid-area: score;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 90px;
+}
+.reveal-round, .reveal-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+}
+.reveal-round-label, .reveal-total-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.reveal-round-val {
+  font-family: "Lilita One", sans-serif;
+  font-size: 20px;
+  color: var(--gold);
+  line-height: 1;
+}
+.reveal-total-val {
+  font-family: "Lilita One", sans-serif;
+  font-size: 24px;
+  color: var(--text);
+  line-height: 1;
+  transition: transform 0.3s ease-out, color 0.3s ease-out;
+}
+@keyframes reveal-total-bump {
+  0%   { transform: scale(1); color: var(--text); }
+  40%  { transform: scale(1.35); color: var(--gold); text-shadow: 0 0 12px rgba(245, 179, 58, 0.7); }
+  100% { transform: scale(1); color: var(--text); }
+}
+.reveal-total.bumped .reveal-total-val {
+  animation: reveal-total-bump 0.7s ease-out;
+}
+
+.reveal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  min-height: 44px;
+}
+
+@media (max-width: 700px) {
+  .winner-overlay.round-reveal { padding: 18px 12px; gap: 10px; }
+  .reveal-title { font-size: 22px; }
+  .reveal-rows { gap: 10px; }
+  .reveal-row { width: 220px; padding: 12px 10px 10px; }
+  .reveal-cascade {
+    --cascade-card-w: 38px;
+    --cascade-card-h: 54px;
+    --cascade-step: 14px;
+  }
+  .reveal-count-num { font-size: 22px; }
 }
 
 @media (max-width: 600px) {

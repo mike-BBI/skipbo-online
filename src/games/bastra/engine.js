@@ -13,8 +13,8 @@
 // - When all hands are empty, deal 4 more to each (no new table).
 // - When deck + hands are exhausted, the last player to capture
 //   sweeps any remaining table cards, then the round scores:
-//     * 10 of diamonds = 2 points
-//     * 2 of clubs     = 1 point
+//     * 10 of diamonds = 3 points ("Good 10")
+//     * 2 of clubs     = 2 points ("Good 2")
 //     * Each Ace       = 1 point
 //     * Each Jack      = 1 point
 //     * Most captured cards = 3 points
@@ -98,6 +98,10 @@ export function createGame(playerIds, names = {}, rulesIn = {}) {
       hand: deck.splice(0, rules.cardsPerHand),
       captures: [],
       bastraCount: 0,
+      // The card that was played to trigger each Bastra this round.
+      // Used by the UI to show face-up "landmark" cards inside the
+      // capture stack.
+      bastraPlayedCards: [],
       score: 0,
       // Persists across rounds; added to at each round's end.
       cumulativeScore: 0,
@@ -146,6 +150,7 @@ function startNextRound(state) {
     p.hand = deck.splice(0, state.rules.cardsPerHand);
     p.captures = [];
     p.bastraCount = 0;
+    p.bastraPlayedCards = [];
     p.score = 0;
   }
   state.deck = deck;
@@ -275,7 +280,10 @@ function applyCapture(next, playerId, card, tableIndices) {
   const bastra = remaining.length === 0;
   p.captures.push(card, ...selected);
   next.lastCapturer = playerId;
-  if (bastra) p.bastraCount += 1;
+  if (bastra) {
+    p.bastraCount += 1;
+    p.bastraPlayedCards = [...(p.bastraPlayedCards || []), card];
+  }
   next.table = remaining;
   next.log.push(
     `${p.name} played ${cardLabel(card)} → captured ${selected.length} card${selected.length === 1 ? '' : 's'}${bastra ? ' (Bastra!)' : ''}.`,
@@ -313,8 +321,8 @@ function scoreRound(state) {
     for (const c of p.captures) {
       if (c.rank === RANK_ACE) score += 1;
       if (c.rank === RANK_JACK) score += 1;
-      if (c.rank === 10 && c.suit === 'D') score += 2;
-      if (c.rank === 2 && c.suit === 'C') score += 1;
+      if (c.rank === 10 && c.suit === 'D') score += 3;
+      if (c.rank === 2 && c.suit === 'C') score += 2;
     }
     if (!tied && id === mostCardsId && mostCards > 0) score += state.rules.mostCardsPoints;
     p.score = score;
