@@ -1,8 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { Component, useEffect, useRef, useState } from 'react';
 import { createHost, createClient, generateRoomCode } from './net.js';
 import { Stats } from './Stats.jsx';
 import { skipboGame } from './games/skipbo/index.js';
 import { bastraGame } from './games/bastra/index.js';
+
+// Thin error boundary so a render crash inside the game (e.g. during
+// the end-of-round reveal) surfaces the real exception instead of
+// leaving a blank screen — React eats the error silently otherwise.
+class GameErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) {
+    console.error('[GameErrorBoundary]', error, info?.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, maxWidth: 560, margin: '40px auto', color: '#fecaca' }}>
+          <h2 style={{ marginTop: 0 }}>Game crashed</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 8 }}>
+            {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
+          </pre>
+          <button onClick={() => { this.setState({ error: null }); this.props.onReset?.(); }}>Back to home</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Registry of available games keyed by the value that appears in
 // ?game=... URL params and in the game_type column of Supabase rows.
@@ -668,6 +693,7 @@ export default function App() {
     const displayState = { ...gameState, roomCode: lobbyState?.roomCode || (mode === 'practice' ? 'SOLO' : '') };
     return (
       <div className="app">
+        <GameErrorBoundary onReset={goHome}>
         <Game
           state={displayState}
           myId={myId}
@@ -680,6 +706,7 @@ export default function App() {
           error={error}
           hideChat={mode === 'practice'}
         />
+        </GameErrorBoundary>
       </div>
     );
   }

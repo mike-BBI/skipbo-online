@@ -12,14 +12,12 @@ export const bastraGame = {
   minPlayers: MIN_PLAYERS,
   maxPlayers: MAX_PLAYERS,
   defaultRules: { ...DEFAULT_RULES },
-  // Bastra is deliberative — each play can trigger a multi-card
-  // capture, and watching the CPU work through the board is part of
-  // the strategy. Delays here are long intentionally: a long "think"
-  // before each action + a solid beat between turns so the move
-  // animation (1.7s) has room to breathe without the next CPU
-  // barging in.
-  botActionDelay: () => 3800,
-  botBetweenTurns: 2400,
+  // Bastra is deliberative — the CPU "thinks" before each action and
+  // the capture animation (1.7s) plays after. Randomized think time
+  // so a CPU doesn't feel mechanical; between-turns kept small so
+  // CPU→CPU transitions feel consistent with user→CPU transitions.
+  botActionDelay: () => 1800 + Math.random() * 1400,  // 1.8–3.2s
+  botBetweenTurns: 500,
   Game,
   Lobby,
 };
