@@ -66,17 +66,23 @@
   padding: 10px;
 }
 
-/* Jack sweep: the played Jack floats in over the whole table area
-   (enlarged + rotated), hangs for a beat while the cards beneath
-   "slide under" it, then everything flies off together. The cards
-   themselves already get a capture animation from .pc.capturing — we
-   just add a bit more drama on top. */
-@keyframes jack-sweep-enter {
-  0%   { opacity: 0; transform: scale(0.4) rotate(-18deg); }
-  25%  { opacity: 1; transform: scale(2) rotate(4deg); }
-  45%  { transform: scale(1.9) rotate(-2deg); }
-  60%  { transform: scale(1.95) rotate(0deg); }
-  100% { opacity: 0; transform: scale(1.5) translateY(-140px) rotate(6deg); }
+/* Jack sweep: the played Jack is "laid down" on the table — drops in
+   from the capturer's side with a slight tilt, lands flat covering
+   the captured cards for a beat, then sweeps up and off carrying
+   them with it (the cards underneath use .pc.capturing's own animation). */
+@keyframes jack-lay-down {
+  0%   { opacity: 0; transform: translateY(-220px) scale(1.5) rotate(-10deg); }
+  35%  { opacity: 1; transform: translateY(0) scale(1.8) rotate(2deg); }
+  50%  { transform: translateY(0) scale(1.8) rotate(0deg); }
+  72%  { transform: translateY(0) scale(1.8) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(-180px) scale(1.35) rotate(4deg); }
+}
+@keyframes jack-lay-down-own {
+  0%   { opacity: 0; transform: translateY(260px) scale(1.5) rotate(10deg); }
+  35%  { opacity: 1; transform: translateY(0) scale(1.8) rotate(-2deg); }
+  50%  { transform: translateY(0) scale(1.8) rotate(0deg); }
+  72%  { transform: translateY(0) scale(1.8) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(200px) scale(1.35) rotate(-4deg); }
 }
 .jack-sweep-overlay {
   position: absolute;
@@ -86,11 +92,45 @@
   justify-content: center;
   pointer-events: none;
   z-index: 20;
-  filter: drop-shadow(0 0 22px hsla(var(--player-hue, 48), 90%, 55%, 0.6));
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55));
 }
 .jack-sweep-card.pc {
   transform-origin: center;
-  animation: jack-sweep-enter 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+  animation: jack-lay-down 1.7s cubic-bezier(0.25, 0.8, 0.3, 1) forwards;
+}
+
+/* Played-card overlay: capturer lays their card down at their own
+   side of the board (opponent = top, player = bottom), separate from
+   the table cards it captures. Glow while captured cards below do
+   the same, then slide back out the way it came. */
+.played-card-overlay {
+  position: absolute;
+  left: 50%;
+  pointer-events: none;
+  z-index: 15;
+}
+.played-card-overlay.from-opponent { top: 0; transform: translateX(-50%); }
+.played-card-overlay.from-player { bottom: 0; transform: translateX(-50%); }
+@keyframes played-card-opp {
+  0%   { opacity: 0; transform: translate(-50%, -120px) scale(0.6); }
+  20%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  60%  { opacity: 1; transform: translate(-50%, 0) scale(1.05); box-shadow: 0 0 22px 8px rgba(245, 179, 58, 0.85); }
+  100% { opacity: 0; transform: translate(-50%, -140px) scale(0.55); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+}
+@keyframes played-card-player {
+  0%   { opacity: 0; transform: translate(-50%, 200px) scale(0.6); }
+  20%  { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  60%  { opacity: 1; transform: translate(-50%, 0) scale(1.05); box-shadow: 0 0 22px 8px rgba(245, 179, 58, 0.85); }
+  100% { opacity: 0; transform: translate(-50%, 220px) scale(0.55); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+}
+.played-card-overlay.from-opponent .played-card-anim {
+  animation: played-card-opp 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+.played-card-overlay.from-player .played-card-anim {
+  animation: played-card-player 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+.jack-sweep-overlay.own-move .jack-sweep-card.pc {
+  animation-name: jack-lay-down-own;
 }
 /* Odd card count: the last card spans both rows so it sits
    vertically centered in its own column instead of dangling at the
@@ -125,6 +165,30 @@
 .bastra-table .pc.capturing { animation: bastra-card-capture 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards; z-index: 5; }
 .bastra-table .pc.played-incoming { animation: bastra-card-played-capture 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards; z-index: 6; }
 .bastra-table .pc.just-placed { animation: bastra-card-place 0.7s ease-out; z-index: 4; }
+
+/* Own-move variants: cards enter/exit toward the hand area at the
+   bottom of the viewport instead of the top. Applied via .own-move
+   on the bastra-table during the player's own animation. */
+@keyframes bastra-card-place-own {
+  0%   { opacity: 0; transform: translateY(220px) scale(0.7); }
+  55%  { opacity: 1; transform: translateY(0) scale(1.08); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes bastra-card-capture-own {
+  0%   { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+  20%  { box-shadow: 0 0 18px 6px rgba(245, 179, 58, 0.8); transform: scale(1.08); }
+  45%  { box-shadow: 0 0 22px 8px rgba(245, 179, 58, 0.9); transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.55) translateY(220px); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+}
+@keyframes bastra-card-played-capture-own {
+  0%   { opacity: 0; transform: translateY(220px) scale(0.6); }
+  25%  { opacity: 1; transform: translateY(0) scale(1.08); box-shadow: 0 0 18px 6px rgba(245, 179, 58, 0.8); }
+  50%  { transform: scale(1); box-shadow: 0 0 22px 8px rgba(245, 179, 58, 0.9); }
+  100% { opacity: 0; transform: scale(0.55) translateY(220px); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+}
+.bastra-table.own-move .pc.capturing { animation-name: bastra-card-capture-own; }
+.bastra-table.own-move .pc.played-incoming { animation-name: bastra-card-played-capture-own; }
+.bastra-table.own-move .pc.just-placed { animation-name: bastra-card-place-own; }
 
 /* Reserves space for the controls slot even when empty so the
    Table container height stays stable whether or not anything is

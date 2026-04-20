@@ -195,12 +195,26 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         {animEvent && animEvent.card?.rank === 11 && animEvent.capturedCards.length > 0 && (
           <div
             key={animEvent.key}
-            className="jack-sweep-overlay"
+            className={`jack-sweep-overlay ${animEvent.playerId === myId ? 'own-move' : ''}`}
             style={{ '--player-hue': hueFor(animEvent.playerId) }}
           >
             <PlayingCard card={animEvent.card} className="jack-sweep-card" />
           </div>
         )}
+        {/* Played-card overlay: for non-Jack captures, the capturer's
+            card appears separately above or below the table (at the
+            capturer's side) rather than being inserted into the grid. */}
+        {animEvent
+          && animEvent.capturedCards.length > 0
+          && animEvent.card?.rank !== 11
+          && (
+            <div
+              key={`${animEvent.key}-overlay`}
+              className={`played-card-overlay ${animEvent.playerId === myId ? 'from-player' : 'from-opponent'}`}
+            >
+              <PlayingCard card={animEvent.card} className="played-card-anim" />
+            </div>
+          )}
         {(() => {
           // Build the display list. In the steady state it's just
           // state.table. During an opponent capture animation we
@@ -223,12 +237,9 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
                 items.push({ key: `t-${c.rank}-${c.suit}`, card: c, idx: stateIdx - 1 });
               }
             }
-            items.push({
-              key: `played-${animEvent.card.rank}-${animEvent.card.suit}`,
-              card: animEvent.card,
-              capturing: true,
-              played: true,
-            });
+            // Note: the played card isn't inserted into the grid — it's
+            // shown separately via the played-card-overlay above/below
+            // the table so you can see the capturer laying it down.
           } else if (animEvent && animEvent.placed) {
             // Place-only animation: state.table already has the played
             // card. Flag it so CSS can fly it in.
@@ -247,16 +258,16 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           }
 
           if (items.length === 0) {
-            // Empty table: show four dashed placeholder slots in a
-            // 2x2 grid so the area reads as "these spots are empty"
-            // rather than printing text that disappears once cards
-            // land. Matches the Skip-Bo empty-pile treatment.
-            const slotCount = state.rules.tableInitSize || 4;
+            // Empty table: just one dashed slot where the next card
+            // would land. Four placeholders overstated the case —
+            // any single play only ever fills one slot.
             return (
               <div className="bastra-table">
-                {Array.from({ length: slotCount }).map((_, i) => (
-                  <PlayingCard key={`slot-${i}`} card={null} className="table-slot" />
-                ))}
+                <PlayingCard
+                  card={null}
+                  className="table-slot"
+                  style={{ gridRow: 1, gridColumn: 1 }}
+                />
               </div>
             );
           }
@@ -275,8 +286,9 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             const beyond = i - 4;
             return { row: (beyond % 2) + 1, col: Math.floor(beyond / 2) + 3 };
           };
+          const ownMove = animEvent && animEvent.playerId === myId;
           return (
-            <div className="bastra-table">
+            <div className={`bastra-table ${ownMove ? 'own-move' : ''}`}>
               {items.map((item, gridIdx) => {
                 const sel = item.idx !== undefined && selectedTable.includes(item.idx);
                 const classes = [
