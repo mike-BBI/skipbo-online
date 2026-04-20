@@ -38,6 +38,10 @@ function wildIsWorthIt(state, cpuId, from) {
 
 function chooseDiscard(state, cpuId) {
   const p = state.players[cpuId];
+  // Possible when the deck and completed piles are both exhausted and
+  // drawHand had nothing left to deal. Caller should skip the discard
+  // so we don't crash trying to read a card from an empty hand.
+  if (p.hand.length === 0) return null;
   // Pick hand card: prefer highest non-wild, keep wilds.
   const sorted = p.hand.map((c, i) => ({ c, i })).sort((a, b) => {
     const av = a.c === SKIPBO ? -1 : a.c;
@@ -119,7 +123,7 @@ export function cpuPlan(state, cpuId) {
 
   if (!s.winner && s.turn === cpuId) {
     const pick = chooseDiscard(s, cpuId);
-    actions.push({ type: 'discard', handIndex: pick.handIndex, discardPile: pick.discardPile });
+    if (pick) actions.push({ type: 'discard', handIndex: pick.handIndex, discardPile: pick.discardPile });
   }
   return actions;
 }
