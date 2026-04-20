@@ -21,10 +21,18 @@ function BuildPileTop({ bp, onClick, className }) {
 }
 
 // selection: { from: 'hand'|'stock'|'discard', index?: number }
-export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave, error, hideChat }) {
+export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMessages, onSendChat, onLeave, error, hideChat }) {
   const [selection, setSelection] = useState(null);
   const [showChat, setShowChat] = useState(false);
   const [expandedDiscard, setExpandedDiscard] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Tick once a second while a vote is active so the countdown updates.
+  useEffect(() => {
+    if (!state.undoVote) return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [state.undoVote]);
 
   const me = state.players[myId];
   const isMyTurn = state.turn === myId && !state.winner;
@@ -135,11 +143,21 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
       } else if (!d.active) {
         // Treat as a tap.
         if (d.source.from === 'discard') {
-          // If a hand card is selected, drop it. Otherwise toggle expand.
+          // If a hand card is selected, drop it. If this pile is already
+          // the current selection, toggle it off. Otherwise make this
+          // pile the selection (so the next tap on a build pile plays
+          // its top card) and expand it so the player can see what's
+          // underneath.
           if (selection?.from === 'hand') {
             onAction({ type: 'discard', handIndex: selection.index, discardPile: d.source.index });
             clearSel();
             setExpandedDiscard(null);
+          } else if (selection?.from === 'discard' && selection.index === d.source.index) {
+            clearSel();
+            setExpandedDiscard(null);
+          } else if (isMyTurn) {
+            setSelection({ from: 'discard', index: d.source.index });
+            setExpandedDiscard(d.source.index);
           } else {
             setExpandedDiscard((cur) => (cur === d.source.index ? null : d.source.index));
           }
@@ -170,14 +188,54 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     clearSel();
   };
 
+  const undoVote = state.undoVote;
+  const isUndoVoter = undoVote && undoVote.voters.includes(myId) && myId !== undoVote.requester;
+  const myVote = isUndoVoter ? undoVote.votes[myId] : undefined;
+  const secondsLeft = undoVote ? Math.max(0, Math.ceil((undoVote.deadlineAt - now) / 1000)) : 0;
+  const requesterName = undoVote ? state.players[undoVote.requester]?.name || 'Someone' : '';
+  const yesCount = undoVote ? Object.values(undoVote.votes).filter((v) => v === true).length : 0;
+  const noCount = undoVote ? Object.values(undoVote.votes).filter((v) => v === false).length : 0;
+
   return (
     <div className="board">
+      {undoVote && (
+        <div className="undo-banner">
+          <div className="undo-banner-row">
+            <strong>{requesterName}</strong> wants to undo their last move.
+            <span className="undo-banner-meta">
+              {yesCount}/{undoVote.required} yes · {noCount} no · {secondsLeft}s
+            </span>
+          </div>
+          {isUndoVoter && typeof myVote !== 'boolean' && onVoteUndo && (
+            <div className="undo-banner-actions">
+              <button onClick={() => onVoteUndo(true)}>Allow</button>
+              <button className="secondary" onClick={() => onVoteUndo(false)}>Deny</button>
+            </div>
+          )}
+          {isUndoVoter && typeof myVote === 'boolean' && (
+            <div className="undo-banner-meta">You voted {myVote ? 'allow' : 'deny'}.</div>
+          )}
+          {myId === undoVote.requester && (
+            <div className="undo-banner-meta">Waiting for the others…</div>
+          )}
+        </div>
+      )}
       <div className="top-bar">
         <div>
           Room <span className="room-code">{state.roomCode || ''}</span>
         </div>
         <div>Set aside: {state.completedPiles.length}</div>
         <div style={{ display: 'flex', gap: 6 }}>
+          {state.undoAvailable && state.lastActor === myId && !state.undoVote && !state.winner && onRequestUndo && (
+            <button
+              className="secondary"
+              style={{ padding: '4px 10px', fontSize: 12 }}
+              onClick={onRequestUndo}
+              title="Ask other players to let you take back your last action."
+            >
+              Undo
+            </button>
+          )}
           {!hideChat && (
             <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setShowChat((v) => !v)}>
               {showChat ? 'Hide chat' : 'Chat'}

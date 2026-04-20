@@ -8,6 +8,10 @@ import { cpuPlan } from './bot.js';
 const ROOM_PREFIX = 'skipbo-room-v1-';
 export const hostPeerId = (room) => ROOM_PREFIX + room.toUpperCase() + '-host';
 
+// How long a proposed undo stays open before auto-finalizing. Unvoted
+// players count as YES on timeout.
+export const UNDO_VOTE_MS = 15_000;
+
 export function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let s = '';
@@ -91,6 +95,24 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
   const botControlled = new Set(); // playerIds now driven by CPU
   let botTimer = null;
 
+  // Undo support: remember the pre-action state so the most recent
+  // actor can propose an undo, valid until the next action is applied.
+  let undoSnapshot = null; // { state, actor }
+  let undoVote = null;     // { requester, voters, votes, required, deadlineAt, timer }
+
+  const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+  const undoMeta = () => ({
+    undoAvailable: !!undoSnapshot,
+    lastActor: undoSnapshot?.actor || null,
+    undoVote: undoVote ? {
+      requester: undoVote.requester,
+      voters: undoVote.voters,
+      votes: undoVote.votes,
+      required: undoVote.required,
+      deadlineAt: undoVote.deadlineAt,
+    } : null,
+  });
+
   const broadcastLobby = () => {
     // Send a fresh shallow snapshot — the host's React setState compares
     // by reference, so mutating `lobby` in place would be a no-op render.
@@ -103,10 +125,109 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
     for (const c of conns.values()) c.send({ type: 'lobby', lobby: snap });
   };
   const broadcastState = () => {
-    onState?.(game);
-    for (const c of conns.values()) c.send({ type: 'state', state: game });
+    const payload = { ...game, ...undoMeta() };
+    onState?.(payload);
+    for (const c of conns.values()) c.send({ type: 'state', state: payload });
     scheduleBotIfNeeded();
   };
+
+  function applyAndSnapshot(pid, action) {
+    if (!game) return { ok: false, error: 'No game' };
+    const prev = deepClone(game);
+    const res = applyAction(game, pid, action);
+    if (!res.ok) return res;
+    game = res.state;
+    undoSnapshot = { state: prev, actor: pid };
+    // Any in-flight vote was for a now-superseded action.
+    if (undoVote) { clearTimeout(undoVote.timer); undoVote = null; }
+    return { ok: true };
+  }
+
+  function handleUndoRequest(pid) {
+    if (!game || game.winner) return { ok: false, error: 'No active game.' };
+    if (!undoSnapshot || undoSnapshot.actor !== pid) {
+      return { ok: false, error: 'No undoable action right now.' };
+    }
+    if (undoVote) return { ok: false, error: 'A vote is already in progress.' };
+
+    const voters = lobby.players.filter((p) => p.id !== pid).map((p) => p.id);
+    if (voters.length === 0) {
+      // Solo game — just undo immediately.
+      game = undoSnapshot.state;
+      undoSnapshot = null;
+      broadcastState();
+      return { ok: true };
+    }
+    const votes = {};
+    // Bot-controlled seats auto-approve — they can't vote themselves.
+    for (const v of voters) {
+      if (botControlled.has(v)) votes[v] = true;
+    }
+    undoVote = {
+      requester: pid,
+      voters,
+      votes,
+      required: Math.floor(voters.length / 2) + 1,
+      deadlineAt: Date.now() + UNDO_VOTE_MS,
+      timer: setTimeout(() => finalizeUndoVote(), UNDO_VOTE_MS),
+    };
+    const requesterName = lobby.players.find((p) => p.id === pid)?.name || 'Someone';
+    broadcastChat({
+      from: 'system', name: 'system',
+      text: `${requesterName} requested an undo. ${undoVote.required}/${voters.length} yes votes needed.`,
+      ts: Date.now(),
+    });
+    broadcastState();
+    maybeFinalizeUndoVote();
+    return { ok: true };
+  }
+
+  function handleUndoVote(pid, yes) {
+    if (!undoVote) return { ok: false, error: 'No active vote.' };
+    if (pid === undoVote.requester) return { ok: false, error: 'Cannot vote on your own undo.' };
+    if (!undoVote.voters.includes(pid)) return { ok: false, error: 'You are not in this game.' };
+    if (typeof undoVote.votes[pid] === 'boolean') return { ok: false, error: 'Already voted.' };
+    undoVote.votes[pid] = !!yes;
+    broadcastState();
+    maybeFinalizeUndoVote();
+    return { ok: true };
+  }
+
+  function maybeFinalizeUndoVote() {
+    if (!undoVote) return;
+    const voted = Object.keys(undoVote.votes).length;
+    if (voted >= undoVote.voters.length) finalizeUndoVote();
+  }
+
+  function finalizeUndoVote() {
+    if (!undoVote) return;
+    clearTimeout(undoVote.timer);
+    // Unvoted = auto-yes per house rules.
+    let yes = 0;
+    for (const vid of undoVote.voters) {
+      const v = undoVote.votes[vid];
+      if (v === true || v === undefined) yes++;
+    }
+    const approved = yes >= undoVote.required;
+    const requesterName = lobby.players.find((p) => p.id === undoVote.requester)?.name || 'Someone';
+    if (approved && undoSnapshot) {
+      game = undoSnapshot.state;
+      undoSnapshot = null;
+      broadcastChat({
+        from: 'system', name: 'system',
+        text: `${requesterName}'s undo was approved (${yes}/${undoVote.voters.length}).`,
+        ts: Date.now(),
+      });
+    } else {
+      broadcastChat({
+        from: 'system', name: 'system',
+        text: `${requesterName}'s undo was denied (${yes}/${undoVote.voters.length}).`,
+        ts: Date.now(),
+      });
+    }
+    undoVote = null;
+    broadcastState();
+  }
 
   // If the current turn belongs to a disconnected player, let the CPU
   // bot play out their turn so the game doesn't stall. Same pacing as
@@ -126,11 +247,11 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
     const act = plan[i];
     const delay = act.type === 'discard' ? 1400 : 1100;
     botTimer = setTimeout(() => {
-      const res = applyAction(game, game.turn, act);
+      const res = applyAndSnapshot(game.turn, act);
       if (!res.ok) { scheduleBotIfNeeded(); return; }
-      game = res.state;
-      onState?.(game);
-      for (const c of conns.values()) c.send({ type: 'state', state: game });
+      const payload = { ...game, ...undoMeta() };
+      onState?.(payload);
+      for (const c of conns.values()) c.send({ type: 'state', state: payload });
       runBotActions(plan, i + 1);
     }, delay);
   }
@@ -235,14 +356,22 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
       return;
     }
     if (msg.type === 'action') {
-      if (!game) return;
-      const res = applyAction(game, pid, msg.action);
+      const res = applyAndSnapshot(pid, msg.action);
       if (!res.ok) {
         conn.send({ type: 'error', message: res.error });
         return;
       }
-      game = res.state;
       broadcastState();
+      return;
+    }
+    if (msg.type === 'undo-request') {
+      const res = handleUndoRequest(pid);
+      if (!res.ok) conn.send({ type: 'error', message: res.error });
+      return;
+    }
+    if (msg.type === 'undo-vote') {
+      const res = handleUndoVote(pid, !!msg.yes);
+      if (!res.ok) conn.send({ type: 'error', message: res.error });
       return;
     }
   }
@@ -276,18 +405,24 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
       } catch (err) {
         return { ok: false, error: err.message };
       }
+      undoSnapshot = null;
+      if (undoVote) { clearTimeout(undoVote.timer); undoVote = null; }
       lobby.started = true;
       broadcastLobby();
       broadcastState();
       return { ok: true };
     },
     submitAction(action) {
-      if (!game) return { ok: false, error: 'No game' };
-      const res = applyAction(game, HOST_ID, action);
+      const res = applyAndSnapshot(HOST_ID, action);
       if (!res.ok) return res;
-      game = res.state;
       broadcastState();
       return { ok: true };
+    },
+    requestUndo() {
+      return handleUndoRequest(HOST_ID);
+    },
+    castUndoVote(yes) {
+      return handleUndoVote(HOST_ID, yes);
     },
     destroy() {
       for (const c of conns.values()) c.close();
@@ -346,6 +481,8 @@ export async function createClient({ roomCode, name, profileId, onLobby, onState
   return {
     getMyId: () => myId,
     sendAction(action) { conn.send({ type: 'action', action }); },
+    requestUndo() { conn.send({ type: 'undo-request' }); },
+    castUndoVote(yes) { conn.send({ type: 'undo-vote', yes: !!yes }); },
     sendRename(name) {
       const clean = String(name || '').slice(0, 20).trim();
       if (clean) conn.send({ type: 'rename', name: clean });

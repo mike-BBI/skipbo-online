@@ -247,6 +247,38 @@ select { width: auto; padding: 6px 8px; }
   justify-content: center;
   flex-wrap: wrap;
 }
+
+.undo-banner {
+  background: #1f2937;
+  border: 1px solid #fbbf24;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  color: #fbbf24;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.undo-banner-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.undo-banner-meta {
+  color: #d1d5db;
+  font-size: 12px;
+}
+.undo-banner-actions {
+  display: flex;
+  gap: 8px;
+}
+.undo-banner-actions button {
+  padding: 4px 12px;
+  font-size: 13px;
+}
 .build-pile {
   display: flex;
   flex-direction: column;

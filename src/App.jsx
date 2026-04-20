@@ -420,6 +420,8 @@ export default function App() {
           state={displayState}
           myId={myId}
           onAction={onAction}
+          onRequestUndo={mode === 'practice' ? null : () => net?.requestUndo?.()}
+          onVoteUndo={mode === 'practice' ? null : (yes) => net?.castUndoVote?.(yes)}
           chatMessages={chatMessages}
           onSendChat={onSendChat}
           onLeave={goHome}
