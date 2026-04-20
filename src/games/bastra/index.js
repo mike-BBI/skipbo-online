@@ -12,11 +12,11 @@ export const bastraGame = {
   minPlayers: MIN_PLAYERS,
   maxPlayers: MAX_PLAYERS,
   defaultRules: { ...DEFAULT_RULES },
-  // Each turn is a single card play — give the move time to land so
-  // players can track the capture (or lack thereof) before the next
-  // seat goes.
-  botActionDelay: () => 1800,
-  botBetweenTurns: 1100,
+  // Bastra is deliberative — each play can trigger a multi-card
+  // capture, and watching the CPU work through the board is part of
+  // the strategy. Delays here are long intentionally.
+  botActionDelay: () => 2800,
+  botBetweenTurns: 1600,
   Game,
   Lobby,
 };

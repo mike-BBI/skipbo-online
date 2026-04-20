@@ -146,49 +146,111 @@ function startNextRound(state) {
   state.log.push(`Round ${state.round} begins.`);
 }
 
-function applyCapture(next, playerId, card) {
+// Can the selected ranks be partitioned so each group either sums to
+// the played rank, or (for face cards / Aces) is a same-rank group?
+// Face cards (J/Q/K) and Aces can only rank-match — the Bastra
+// convention doesn't let 11 / 12 / 13 / 1 participate in numeric sums.
+// Jacks have a separate special rule (capture-all) handled elsewhere.
+function canPartitionToTarget(ranks, target) {
+  if (ranks.length === 0) return true;
+  const n = ranks.length;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) sum += ranks[i];
+    if (sum !== target) continue;
+    const rest = [];
+    for (let i = 0; i < n; i++) if (!(mask & (1 << i))) rest.push(ranks[i]);
+    if (canPartitionToTarget(rest, target)) return true;
+  }
+  return false;
+}
+
+export function isValidCapture(playedRank, selectedRanks) {
+  if (selectedRanks.length === 0) return true;
+  if (playedRank === RANK_ACE || playedRank === RANK_QUEEN || playedRank === RANK_KING) {
+    return selectedRanks.every((r) => r === playedRank);
+  }
+  // Numbered cards (2-10) — sum-and-group partitioning.
+  return canPartitionToTarget(selectedRanks, playedRank);
+}
+
+// Best (largest) valid capture for the given played card. Returns an
+// array of table indices. Empty = no capture possible. Used by the
+// bot and by the UI to hint "you can take N cards with this".
+export function findBestCapture(playedCard, table) {
+  if (!table.length) return [];
+  if (playedCard.rank === RANK_JACK) {
+    return table.map((_, i) => i);
+  }
+  if (playedCard.rank === RANK_ACE || playedCard.rank === RANK_QUEEN || playedCard.rank === RANK_KING) {
+    const out = [];
+    for (let i = 0; i < table.length; i++) if (table[i].rank === playedCard.rank) out.push(i);
+    return out;
+  }
+  const n = table.length;
+  let best = [];
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const indices = [];
+    const ranks = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) { indices.push(i); ranks.push(table[i].rank); }
+    }
+    if (indices.length <= best.length) continue;
+    if (isValidCapture(playedCard.rank, ranks)) best = indices;
+  }
+  return best;
+}
+
+function applyCapture(next, playerId, card, tableIndices) {
   const p = next.players[playerId];
-  let captured = null;
-  let bastra = false;
 
+  // Jack always sweeps the entire table, ignoring any selection.
   if (card.rank === RANK_JACK) {
-    if (next.table.length > 0) {
-      captured = [card, ...next.table];
-      // Playing a J on a non-empty table always captures everything.
-      // By Bastra convention it only counts as a Bastra if there was
-      // more than just a single matching card — but a J always clears
-      // the table, so we treat any non-empty-table J as a Bastra.
-      bastra = true;
-      next.table = [];
-    } else {
+    if (next.table.length === 0) {
       next.table.push(card);
+      next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
+      return { ok: true };
     }
-  } else {
-    const matches = [];
-    const remaining = [];
-    for (const t of next.table) {
-      if (t.rank === card.rank) matches.push(t);
-      else remaining.push(t);
-    }
-    if (matches.length > 0) {
-      captured = [card, ...matches];
-      next.table = remaining;
-      if (remaining.length === 0) bastra = true;
-    } else {
-      next.table.push(card);
-    }
+    const swept = next.table.slice();
+    p.captures.push(card, ...swept);
+    p.bastraCount += 1;
+    next.lastCapturer = playerId;
+    next.table = [];
+    next.log.push(`${p.name} played ${cardLabel(card)} → captured ${swept.length} (Bastra!).`);
+    return { ok: true };
   }
 
-  if (captured) {
-    p.captures.push(...captured);
-    next.lastCapturer = playerId;
-    if (bastra) p.bastraCount += 1;
-    next.log.push(
-      `${p.name} played ${cardLabel(card)} → captured ${captured.length - 1} card${captured.length - 1 === 1 ? '' : 's'}${bastra ? ' (Bastra!)' : ''}.`,
-    );
-  } else {
-    next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
+  const selected = [];
+  const selectedSet = new Set(tableIndices);
+  for (const idx of tableIndices) {
+    const t = next.table[idx];
+    if (!t) return { ok: false, error: 'Selection points at a card that is not on the table.' };
+    selected.push(t);
   }
+
+  if (selected.length === 0) {
+    next.table.push(card);
+    next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
+    return { ok: true };
+  }
+
+  if (!isValidCapture(card.rank, selected.map((c) => c.rank))) {
+    return { ok: false, error: `Those cards don't form a valid capture for ${cardLabel(card)}.` };
+  }
+
+  const remaining = [];
+  for (let i = 0; i < next.table.length; i++) {
+    if (!selectedSet.has(i)) remaining.push(next.table[i]);
+  }
+  const bastra = remaining.length === 0;
+  p.captures.push(card, ...selected);
+  next.lastCapturer = playerId;
+  if (bastra) p.bastraCount += 1;
+  next.table = remaining;
+  next.log.push(
+    `${p.name} played ${cardLabel(card)} → captured ${selected.length} card${selected.length === 1 ? '' : 's'}${bastra ? ' (Bastra!)' : ''}.`,
+  );
+  return { ok: true };
 }
 
 function maybeRefillHands(next) {
@@ -288,8 +350,13 @@ export function applyAction(state, playerId, action) {
   if (action.handIndex < 0 || action.handIndex >= p.hand.length) {
     return { ok: false, error: 'Bad card index', state };
   }
-  const card = p.hand.splice(action.handIndex, 1)[0];
-  applyCapture(next, playerId, card);
+  const card = p.hand[action.handIndex];
+  const tableIndices = Array.isArray(action.tableIndices) ? action.tableIndices : [];
+  const res = applyCapture(next, playerId, card, tableIndices);
+  if (!res.ok) return { ok: false, error: res.error, state };
+  // Only remove the hand card after we've successfully committed it
+  // (so a rejected capture doesn't leave the hand mutated).
+  p.hand.splice(action.handIndex, 1);
 
   const turnIdx = next.playerOrder.indexOf(playerId);
   next.turn = next.playerOrder[(turnIdx + 1) % next.playerOrder.length];

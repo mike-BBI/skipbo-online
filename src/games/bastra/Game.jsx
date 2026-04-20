@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PlayingCard } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
+import { isValidCapture, RANK_JACK } from './engine.js';
 
 // Curated hue palette (same spacing idea as Skip-Bo).
 const PLAYER_HUES = [20, 65, 110, 155, 200, 245, 290, 335];
@@ -47,14 +48,96 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const activeHue = hueFor(state.turn);
   const activeName = state.turn === myId ? 'Your' : `${state.players[state.turn]?.name || 'Player'}'s`;
 
-  const playCard = (i) => {
+  // Interactive capture: click a hand card to select it, then click
+  // table cards to build a capture set. Confirm commits; the engine
+  // validates that the set is partitionable into sum/rank groups.
+  const [selectedHandIdx, setSelectedHandIdx] = useState(null);
+  const [selectedTable, setSelectedTable] = useState([]); // array of indices
+
+  // If the state changes (opponent moved, new deal), drop any stale
+  // selection — the table indices may no longer mean what they did.
+  useEffect(() => {
+    setSelectedHandIdx(null);
+    setSelectedTable([]);
+  }, [state.turn, state.round]);
+
+  // Celebratory overlay when any seat scores a Bastra. Watch for
+  // increments to bastraCount, fire an announcement, let it sit for
+  // ~2 seconds, then fade.
+  const [bastraEvent, setBastraEvent] = useState(null); // { playerId, key }
+  const lastBastraCountsRef = useRef(null);
+  useEffect(() => {
+    const prev = lastBastraCountsRef.current;
+    const current = {};
+    for (const id of state.playerOrder) current[id] = state.players[id]?.bastraCount || 0;
+    lastBastraCountsRef.current = current;
+    if (!prev) return;
+    for (const id of state.playerOrder) {
+      if ((current[id] || 0) > (prev[id] || 0)) {
+        setBastraEvent({ playerId: id, key: Date.now() + ':' + id });
+        const t = setTimeout(() => setBastraEvent(null), 2200);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [state.players, state.playerOrder]);
+
+  const selectedCard = selectedHandIdx != null ? me?.hand[selectedHandIdx] : null;
+  const selectedRanks = selectedTable.map((i) => state.table[i]?.rank).filter((r) => r != null);
+  const captureIsValid = selectedCard ? isValidCapture(selectedCard.rank, selectedRanks) : false;
+  const isJackSelected = selectedCard?.rank === RANK_JACK;
+
+  const toggleHandSelect = (i) => {
     if (!isMyTurn || state.winner) return;
-    onAction({ type: 'play', handIndex: i });
+    if (selectedHandIdx === i) {
+      setSelectedHandIdx(null);
+      setSelectedTable([]);
+    } else {
+      setSelectedHandIdx(i);
+      setSelectedTable([]);
+    }
+  };
+
+  const toggleTableSelect = (i) => {
+    if (!isMyTurn || state.winner) return;
+    if (selectedHandIdx == null) return;
+    if (isJackSelected) return; // Jack auto-sweeps; no manual selection
+    setSelectedTable((cur) =>
+      cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i]
+    );
+  };
+
+  const confirmPlay = () => {
+    if (!isMyTurn || state.winner) return;
+    if (selectedHandIdx == null) return;
+    // Jack sweeps the whole table regardless of what's selected.
+    const indices = isJackSelected ? state.table.map((_, i) => i) : selectedTable;
+    onAction({ type: 'play', handIndex: selectedHandIdx, tableIndices: indices });
+    setSelectedHandIdx(null);
+    setSelectedTable([]);
+  };
+
+  const cancelSelection = () => {
+    setSelectedHandIdx(null);
+    setSelectedTable([]);
   };
 
   return (
     <div className="board bastra">
-      {!state.winner && turnAnnounceKey > 0 && (
+      {bastraEvent && (
+        <div
+          key={bastraEvent.key}
+          className="bastra-celebrate"
+          style={{ '--player-hue': hueFor(bastraEvent.playerId) }}
+        >
+          <div className="bastra-celebrate-label">BASTRA</div>
+          <div className="bastra-celebrate-name">
+            {bastraEvent.playerId === myId ? 'You swept the table!' : `${state.players[bastraEvent.playerId]?.name || 'Someone'} swept the table!`}
+          </div>
+          <div className="bastra-celebrate-bonus">+{state.rules.bastraPoints ?? 10}</div>
+        </div>
+      )}
+
+      {!state.winner && turnAnnounceKey > 0 && !bastraEvent && (
         <div key={turnAnnounceKey} className="turn-announcement" style={{ '--player-hue': activeHue }}>
           {activeName} turn
         </div>
@@ -109,9 +192,58 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           {state.table.length === 0 ? (
             <div style={{ color: 'var(--muted)', fontStyle: 'italic', padding: 12 }}>Empty — capture next!</div>
           ) : (
-            state.table.map((c, i) => <PlayingCard key={`t-${i}`} card={c} />)
+            state.table.map((c, i) => {
+              const sel = selectedTable.includes(i);
+              return (
+                <PlayingCard
+                  key={`t-${i}`}
+                  card={c}
+                  onClick={() => toggleTableSelect(i)}
+                  selected={sel}
+                  className={selectedHandIdx != null && !isJackSelected && isMyTurn ? 'playable' : ''}
+                />
+              );
+            })
           )}
         </div>
+        {selectedHandIdx != null && !state.winner && !state.roundEnded && (
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+            {isJackSelected ? (
+              <>
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  Jack captures the whole table{state.table.length > 0 ? ' (Bastra!)' : ''}
+                </span>
+                <button onClick={confirmPlay}>Play Jack</button>
+                <button className="secondary" onClick={cancelSelection}>Cancel</button>
+              </>
+            ) : selectedTable.length === 0 ? (
+              <>
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  Tap cards on the table to capture, or just play to the table.
+                </span>
+                <button onClick={confirmPlay}>Play to table</button>
+                <button className="secondary" onClick={cancelSelection}>Cancel</button>
+              </>
+            ) : captureIsValid ? (
+              <>
+                <span style={{ fontSize: 13, color: 'var(--accent-2)' }}>
+                  Capture {selectedTable.length} card{selectedTable.length === 1 ? '' : 's'}
+                  {selectedTable.length === state.table.length ? ' — Bastra!' : ''}
+                </span>
+                <button onClick={confirmPlay}>Capture</button>
+                <button className="secondary" onClick={cancelSelection}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 13, color: 'var(--danger)' }}>
+                  Selection doesn't add up.
+                </span>
+                <button className="secondary" onClick={() => setSelectedTable([])}>Clear</button>
+                <button className="secondary" onClick={cancelSelection}>Cancel</button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="hand-wrap">
@@ -124,13 +256,16 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             <PlayingCard
               key={i}
               card={c}
-              onClick={() => playCard(i)}
+              onClick={() => toggleHandSelect(i)}
+              selected={selectedHandIdx === i}
               className={isMyTurn ? 'playable' : 'disabled'}
             />
           ))}
         </div>
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-          Captured: {me?.captures.length ?? 0}{me?.bastraCount > 0 ? ` · ${me.bastraCount} Bastra${me.bastraCount > 1 ? 's' : ''}` : ''}
+          Captured: {me?.captures.length ?? 0}
+          {me?.bastraCount > 0 ? ` · ${me.bastraCount} Bastra${me.bastraCount > 1 ? 's' : ''}` : ''}
+          {me?.cumulativeScore > 0 ? ` · ${me.cumulativeScore} pts` : ''}
         </div>
       </div>
 

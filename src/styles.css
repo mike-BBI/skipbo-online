@@ -56,6 +56,68 @@
   padding: 10px;
 }
 
+@keyframes bastra-celebrate {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-6deg); }
+  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1.25) rotate(-3deg); }
+  20%  { transform: translate(-50%, -50%) scale(1.05) rotate(1deg); }
+  35%  { transform: translate(-50%, -50%) scale(1.15) rotate(-2deg); }
+  50%  { transform: translate(-50%, -50%) scale(1.05) rotate(1deg); }
+  80%  { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.3) rotate(0deg); }
+}
+@keyframes bastra-celebrate-glow {
+  0%, 100% { box-shadow: 0 0 40px 10px hsla(var(--player-hue, 48), 90%, 60%, 0.55); }
+  50%      { box-shadow: 0 0 80px 20px hsla(var(--player-hue, 48), 95%, 70%, 0.95); }
+}
+.bastra-celebrate {
+  position: fixed;
+  top: 42%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 22px 48px;
+  border-radius: 18px;
+  background: linear-gradient(135deg,
+    hsla(var(--player-hue, 48), 85%, 25%, 0.97),
+    hsla(var(--player-hue, 48), 70%, 12%, 0.97));
+  border: 3px solid hsl(var(--player-hue, 48), 90%, 65%);
+  color: #fff;
+  text-align: center;
+  z-index: 200;
+  pointer-events: none;
+  animation:
+    bastra-celebrate 2.2s ease-out forwards,
+    bastra-celebrate-glow 0.9s ease-in-out infinite;
+}
+.bastra-celebrate-label {
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-size: 48px;
+  letter-spacing: 4px;
+  color: hsl(var(--player-hue, 48), 100%, 85%);
+  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  line-height: 1;
+}
+.bastra-celebrate-name {
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.bastra-celebrate-bonus {
+  margin-top: 10px;
+  font-family: "Lilita One", sans-serif;
+  font-size: 28px;
+  color: var(--gold);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* Playing-card selection state used by Bastra. */
+.pc.selected {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+  transform: translateY(-6px);
+  transition: transform 0.12s;
+}
+
 
 :root {
   --bg: #0b3d2e;           /* felt-green table */
