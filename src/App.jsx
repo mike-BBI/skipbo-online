@@ -230,6 +230,9 @@ export default function App() {
     }
     try {
       const g = createGame(ids, names, practiceRules);
+      // Link the human seat to the current profile so recorded games
+      // know which profile to credit. CPUs stay null.
+      if (g.players[HUMAN_ID]) g.players[HUMAN_ID].profileId = getProfile().id;
       practiceStateRef.current = g;
       setGameState(g);
       setMyId(HUMAN_ID);

@@ -405,6 +405,12 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
       } catch (err) {
         return { ok: false, error: err.message };
       }
+      // Carry each seat's profileId into the engine state so cloud
+      // game records can link participants back to their cross-device
+      // profile. CPU-controlled seats stay null.
+      for (const lp of lobby.players) {
+        if (game.players[lp.id]) game.players[lp.id].profileId = lp.profileId || null;
+      }
       undoSnapshot = null;
       if (undoVote) { clearTimeout(undoVote.timer); undoVote = null; }
       lobby.started = true;

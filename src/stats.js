@@ -77,6 +77,7 @@ export function recordGame(state, profileId, humanGameId) {
     players: state.playerOrder.map((id) => ({
       gameId: id,
       name: state.players[id]?.name ?? id,
+      profileId: state.players[id]?.profileId ?? null,
       stockRemaining: state.players[id]?.stock.length ?? 0,
       isWinner: id === winnerHumanId,
     })),

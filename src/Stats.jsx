@@ -121,21 +121,58 @@ export function Stats({ onBack }) {
         </div>
       </div>
 
-      {/* Lifetime stats */}
-      <div className="card-panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ fontWeight: 600 }}>Lifetime</div>
-          {loadingCloud && <div style={{ fontSize: 11, color: 'var(--muted)' }}>syncing…</div>}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          <Stat label="Games" value={stats.total} />
-          <Stat label="Wins" value={stats.wins} />
-          <Stat label="Win %" value={`${stats.winPct}%`} />
-          <Stat label="Avg turns" value={stats.avgTurnsPerGame || '—'} />
-          <Stat label="Avg length" value={formatDuration(stats.avgDurationMs)} />
-          <Stat label="Losses" value={stats.losses} />
-        </div>
-      </div>
+      {/* Lifetime stats — split by opponent type. */}
+      {(() => {
+        const vsHumanHistory = history.filter((r) => !isCpuGame(r));
+        const vsCpuHistory = history.filter(isCpuGame);
+        const vsHuman = computeStats(vsHumanHistory);
+        const vsCpu = computeStats(vsCpuHistory);
+        return (
+          <>
+            <LifetimePanel title="vs Humans" s={vsHuman} syncing={loadingCloud} />
+            <LifetimePanel title="vs CPUs" s={vsCpu} />
+          </>
+        );
+      })()}
+
+      {/* Head-to-head: per-opponent record, humans only. */}
+      {(() => {
+        const byProfile = new Map(); // profileId -> { name, wins, losses }
+        for (const r of history) {
+          if (isCpuGame(r)) continue;
+          const won = r.didIWin;
+          for (const p of r.players || []) {
+            if (!p.profileId || p.profileId === profile.id) continue;
+            const entry = byProfile.get(p.profileId) || { name: p.name, wins: 0, losses: 0 };
+            entry.name = p.name; // keep most recent spelling
+            if (won) entry.wins += 1; else entry.losses += 1;
+            byProfile.set(p.profileId, entry);
+          }
+        }
+        const rows = [...byProfile.values()].sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
+        if (rows.length === 0) return null;
+        return (
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Head-to-head</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {rows.map((row) => {
+                const total = row.wins + row.losses;
+                const pct = total ? Math.round((row.wins / total) * 100) : 0;
+                return (
+                  <div key={row.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--panel-2)', borderRadius: 8, padding: '6px 10px', fontSize: 13 }}>
+                    <div style={{ fontWeight: 600 }}>{row.name}</div>
+                    <div style={{ color: 'var(--muted)' }}>
+                      <span style={{ color: 'var(--accent-2)' }}>{row.wins}W</span> ·
+                      <span> {row.losses}L</span> ·
+                      <span> {pct}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* History */}
       <div className="card-panel">
@@ -159,6 +196,41 @@ export function Stats({ onBack }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Returns true if the record includes any CPU opponent. Works on both
+// old (no profileIds) and new (profileId-aware) snapshots by pattern-
+// matching the legacy gameId/name convention.
+function isCpuGame(record) {
+  const players = record.players || [];
+  return players.some((p) => {
+    if (typeof p.gameId === 'string' && /^cpu\d+$/i.test(p.gameId)) return true;
+    if (typeof p.name === 'string' && /^CPU\s?\d+$/.test(p.name)) return true;
+    return false;
+  });
+}
+
+function LifetimePanel({ title, s, syncing }) {
+  return (
+    <div className="card-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>{title}</div>
+        {syncing && <div style={{ fontSize: 11, color: 'var(--muted)' }}>syncing…</div>}
+      </div>
+      {s.total === 0 ? (
+        <div style={{ color: 'var(--muted)', fontStyle: 'italic', fontSize: 13 }}>No games yet.</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <Stat label="Games" value={s.total} />
+          <Stat label="Wins" value={s.wins} />
+          <Stat label="Win %" value={`${s.winPct}%`} />
+          <Stat label="Avg turns" value={s.avgTurnsPerGame || '—'} />
+          <Stat label="Avg length" value={formatDuration(s.avgDurationMs)} />
+          <Stat label="Losses" value={s.losses} />
+        </div>
+      )}
     </div>
   );
 }
