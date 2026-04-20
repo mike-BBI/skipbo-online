@@ -257,7 +257,9 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             {isJackSelected ? (
               <>
                 <span style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  Jack captures the whole table{state.table.length > 0 ? ' (Bastra!)' : ''}
+                  {state.table.length > 0
+                    ? `Jack captures all ${state.table.length} table cards`
+                    : 'Jack has nothing to sweep — plays to the table'}
                 </span>
                 <button onClick={confirmPlay}>Play Jack</button>
                 <button className="secondary" onClick={cancelSelection}>Cancel</button>

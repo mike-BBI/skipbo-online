@@ -32,7 +32,10 @@ export function cpuPlan(state, cpuId) {
     const card = p.hand[i];
     if (card.rank === RANK_JACK) {
       if (state.table.length > 0) {
-        const v = captureValue(card, state.table) + 15; // +15 for guaranteed Bastra
+        // Jack sweeps the whole table but does NOT score a Bastra
+        // (that bonus only applies to regular captures that happen
+        // to clear the table). Still valuable for the raw cards.
+        const v = captureValue(card, state.table);
         if (v > bestValue) {
           bestValue = v;
           bestAction = {

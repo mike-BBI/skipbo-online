@@ -205,6 +205,9 @@ function applyCapture(next, playerId, card, tableIndices) {
   const p = next.players[playerId];
 
   // Jack always sweeps the entire table, ignoring any selection.
+  // A Jack sweep is NOT a Bastra — the Bastra bonus only applies when
+  // a regular capture happens to clear the table, not when the Jack's
+  // special "capture-all" rule does it.
   if (card.rank === RANK_JACK) {
     if (next.table.length === 0) {
       next.table.push(card);
@@ -214,11 +217,10 @@ function applyCapture(next, playerId, card, tableIndices) {
     }
     const swept = next.table.slice();
     p.captures.push(card, ...swept);
-    p.bastraCount += 1;
     next.lastCapturer = playerId;
     next.table = [];
-    next.log.push(`${p.name} played ${cardLabel(card)} → captured ${swept.length} (Bastra!).`);
-    next.lastMove = { playerId, card, capturedCards: swept, bastra: true, placed: false };
+    next.log.push(`${p.name} played ${cardLabel(card)} → captured ${swept.length}.`);
+    next.lastMove = { playerId, card, capturedCards: swept, bastra: false, placed: false };
     return { ok: true };
   }
 
