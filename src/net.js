@@ -2,8 +2,6 @@
 // Host holds truth for lobby + game state, broadcasts to all clients.
 
 import { Peer } from 'peerjs';
-import { createGame, applyAction, MAX_PLAYERS, MIN_PLAYERS, resolveRules } from './games/skipbo/engine.js';
-import { cpuPlan } from './games/skipbo/bot.js';
 
 const ROOM_PREFIX = 'skipbo-room-v1-';
 export const hostPeerId = (room) => ROOM_PREFIX + room.toUpperCase() + '-host';
@@ -74,7 +72,13 @@ function openPeer(id) {
 }
 
 // ───────────────────────────── HOST ─────────────────────────────
-export async function createHost({ roomCode, hostName, hostProfileId, onLobby, onState, onChat, onError, onStatus }) {
+// `gameSpec` is a game-descriptor from src/games/<id>/index.js — it
+// supplies createGame, applyAction, cpuPlan, rules, and CPU pacing.
+// (Named gameSpec to avoid colliding with the `game` variable below
+// which holds the live engine state.)
+export async function createHost({ game: gameSpec, roomCode, hostName, hostProfileId, onLobby, onState, onChat, onError, onStatus }) {
+  if (!gameSpec) throw new Error('createHost requires a game descriptor');
+  const { createGame, applyAction, cpuPlan, minPlayers, maxPlayers, defaultRules, botActionDelay, botBetweenTurns } = gameSpec;
   onStatus?.({ kind: 'connecting' });
   const { peer } = await openPeer(hostPeerId(roomCode));
   onStatus?.({ kind: 'open', peerId: peer.id });
@@ -88,7 +92,7 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
     roomCode,
     hostId: HOST_ID,
     players: [{ id: HOST_ID, name: hostName, profileId: hostProfileId || null }],
-    rules: { stockSize: 30, handSize: 5, maxDiscardDepth: null },
+    rules: { ...defaultRules },
     started: false,
   };
   let game = null;
@@ -241,11 +245,11 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
   }
   function runBotActions(plan, i) {
     if (i >= plan.length) {
-      botTimer = setTimeout(scheduleBotIfNeeded, 700);
+      botTimer = setTimeout(scheduleBotIfNeeded, botBetweenTurns ?? 700);
       return;
     }
     const act = plan[i];
-    const delay = act.type === 'discard' ? 1400 : 1100;
+    const delay = botActionDelay ? botActionDelay(act) : 1200;
     botTimer = setTimeout(() => {
       const res = applyAndSnapshot(game.turn, act);
       if (!res.ok) { scheduleBotIfNeeded(); return; }
@@ -327,7 +331,7 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
         conn.send({ type: 'error', message: 'Game already in progress.' });
         return;
       }
-      if (lobby.players.length >= MAX_PLAYERS) {
+      if (lobby.players.length >= maxPlayers) {
         conn.send({ type: 'error', message: 'Room is full.' });
         conn.close();
         return;
@@ -397,7 +401,7 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
     },
     startGame() {
       if (lobby.started) return { ok: false, error: 'Already started' };
-      if (lobby.players.length < MIN_PLAYERS) return { ok: false, error: `Need ≥${MIN_PLAYERS} players` };
+      if (lobby.players.length < minPlayers) return { ok: false, error: `Need ≥${minPlayers} players` };
       const ids = lobby.players.map((p) => p.id);
       const names = Object.fromEntries(lobby.players.map((p) => [p.id, p.name]));
       try {

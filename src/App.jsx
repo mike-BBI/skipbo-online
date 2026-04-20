@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createHost, createClient, generateRoomCode } from './net.js';
-import { Lobby } from './games/skipbo/Lobby.jsx';
-import { Game } from './games/skipbo/Game.jsx';
 import { Stats } from './Stats.jsx';
-import { createGame, applyAction, requiredDecks, MAX_PLAYERS } from './games/skipbo/engine.js';
-import { cpuPlan } from './games/skipbo/bot.js';
+import { skipboGame } from './games/skipbo/index.js';
+
+// Currently only Skip-Bo. When more games are added this will switch
+// on a URL param or picker state.
+const currentGame = skipboGame;
+const { Game, Lobby, createGame, applyAction, cpuPlan, requiredDecks, maxPlayers: MAX_PLAYERS } = currentGame;
 import { getProfile, recordGame, setProfile, selectProfile, clearProfile } from './stats.js';
 import {
   supabaseEnabled,
@@ -171,6 +173,7 @@ export default function App() {
     const code = generateRoomCode();
     try {
       const h = await createHost({
+        game: currentGame,
         roomCode: code,
         hostName: name.trim(),
         hostProfileId: getProfile().id,
