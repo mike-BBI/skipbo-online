@@ -99,6 +99,16 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
   // non-empty to empty, briefly render the top card (retrieved from
   // completedPiles) with a celebratory scale+glow+fly-off, so the
   // completion is visible instead of vanishing instantly.
+  //
+  // Important: the clearing timers are deliberately NOT cancelled in
+  // the effect cleanup. When the effect re-runs for a later state
+  // update (which happens every subsequent move), cleaning up would
+  // cancel the in-flight timer for the previous completion, leaving
+  // its entry in `completingPiles` forever — the pile-complete card
+  // animation ends at opacity:0, which then *hides the build-pile
+  // slot entirely* (no EmptySlot renders because `completing` is
+  // truthy). An uncleaned timer on unmount is harmless here (React
+  // just warns).
   const [completingPiles, setCompletingPiles] = useState([]);
   const prevBuildPilesRef = useRef(state.buildPiles);
   useEffect(() => {
@@ -110,17 +120,15 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
         toAnimate.push({ pileIdx: i, card: topCard, key: `${Date.now()}-${i}` });
       }
     }
+    prevBuildPilesRef.current = state.buildPiles;
     if (toAnimate.length) {
-      setCompletingPiles((prev) => [...prev, ...toAnimate]);
-      const timers = toAnimate.map((a) =>
+      setCompletingPiles((cur) => [...cur, ...toAnimate]);
+      toAnimate.forEach((a) => {
         setTimeout(() => {
           setCompletingPiles((cur) => cur.filter((x) => x.key !== a.key));
-        }, 1300)
-      );
-      prevBuildPilesRef.current = state.buildPiles;
-      return () => timers.forEach(clearTimeout);
+        }, 1300);
+      });
     }
-    prevBuildPilesRef.current = state.buildPiles;
   }, [state.buildPiles, state.completedPiles]);
 
   // Bump a key each time the hand grows so the cards remount and the

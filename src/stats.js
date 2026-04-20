@@ -86,7 +86,7 @@ export function recordGame(state, profileId, humanGameId, gameType = 'skipbo') {
       gameId: id,
       name: state.players[id]?.name ?? id,
       profileId: state.players[id]?.profileId ?? null,
-      stockRemaining: state.players[id]?.stock.length ?? 0,
+      stockRemaining: state.players[id]?.stock?.length ?? 0,
       isWinner: id === winnerHumanId,
     })),
   };
