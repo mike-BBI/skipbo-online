@@ -1,0 +1,401 @@
+import { useEffect, useRef, useState } from 'react';
+import { createHost, createClient, generateRoomCode } from './net.js';
+import { Lobby } from './Lobby.jsx';
+import { Game } from './Game.jsx';
+import { Stats } from './Stats.jsx';
+import { createGame, applyAction, requiredDecks } from './engine.js';
+import { cpuPlan } from './bot.js';
+import { getProfile, recordGame, setProfile } from './stats.js';
+
+const NAME_KEY = 'skipbo.name';
+const HUMAN_ID = 'human';
+const DEFAULT_PRACTICE_RULES = { stockSize: 30, handSize: 5, maxDiscardDepth: null };
+
+export default function App() {
+  const [phase, setPhase] = useState('home'); // home | connecting | lobby | game
+  const [mode, setMode] = useState(null); // 'host' | 'client' | 'practice'
+  const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) || '');
+  const [joinCode, setJoinCode] = useState('');
+  const [error, setError] = useState(null);
+  const [cpuCount, setCpuCount] = useState(2);
+  const [practiceRules, setPracticeRules] = useState(DEFAULT_PRACTICE_RULES);
+
+  const [net, setNet] = useState(null); // host or client handle
+  const [lobbyState, setLobbyState] = useState(null);
+  const [gameState, setGameState] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [myId, setMyId] = useState(null);
+  const practiceStateRef = useRef(null);
+  const cpuTimerRef = useRef(null);
+  const recordedGameRef = useRef(false);
+
+  useEffect(() => {
+    return () => { net?.destroy(); };
+  }, [net]);
+
+  useEffect(() => {
+    if (name) {
+      localStorage.setItem(NAME_KEY, name);
+      setProfile({ name });
+    }
+  }, [name]);
+
+  // Record the game outcome exactly once when the game ends.
+  useEffect(() => {
+    if (!gameState?.winner || recordedGameRef.current || !myId) return;
+    recordedGameRef.current = true;
+    try {
+      const profile = getProfile();
+      recordGame(gameState, profile.id, myId);
+    } catch (err) {
+      console.error('failed to record game', err);
+    }
+  }, [gameState?.winner, myId]);
+
+  const goHome = () => {
+    net?.destroy();
+    if (cpuTimerRef.current) { clearTimeout(cpuTimerRef.current); cpuTimerRef.current = null; }
+    practiceStateRef.current = null;
+    recordedGameRef.current = false;
+    setNet(null);
+    setLobbyState(null);
+    setGameState(null);
+    setChatMessages([]);
+    setMyId(null);
+    setMode(null);
+    setError(null);
+    setPhase('home');
+  };
+
+  const onLobby = (lobby) => {
+    setLobbyState(lobby);
+    if (lobby.started) setPhase('game');
+    else setPhase('lobby');
+  };
+  const onState = (s) => { setGameState(s); setPhase('game'); };
+  const onChat = (msg) => setChatMessages((prev) => [...prev, msg]);
+  const onErr = (msg) => setError(typeof msg === 'string' ? msg : (msg?.message || String(msg)));
+
+  async function host() {
+    setError(null);
+    if (!name.trim()) { setError('Enter a name first.'); return; }
+    setPhase('connecting');
+    const code = generateRoomCode();
+    try {
+      const h = await createHost({
+        roomCode: code,
+        hostName: name.trim(),
+        hostProfileId: getProfile().id,
+        onLobby, onState, onChat, onError: onErr,
+      });
+      setNet(h);
+      setMode('host');
+      setMyId(h.hostId);
+      setLobbyState(h.getLobby());
+      setPhase('lobby');
+    } catch (err) {
+      setError(err.message || String(err));
+      setPhase('home');
+    }
+  }
+
+  async function join() {
+    setError(null);
+    if (!name.trim()) { setError('Enter a name first.'); return; }
+    if (!/^[A-Z0-9]{4}$/i.test(joinCode)) { setError('Enter a 4-character room code.'); return; }
+    setPhase('connecting');
+    try {
+      const c = await createClient({
+        roomCode: joinCode.toUpperCase(),
+        name: name.trim(),
+        profileId: getProfile().id,
+        onLobby, onState, onChat,
+        onError: onErr,
+        onWelcome: (id) => setMyId(id),
+      });
+      setNet(c);
+      setMode('client');
+    } catch (err) {
+      setError(err.message || String(err));
+      setPhase('home');
+    }
+  }
+
+  function openPracticeSetup() {
+    setError(null);
+    setPhase('practice-setup');
+  }
+
+  function startPractice() {
+    setError(null);
+    const humanName = name.trim() || 'You';
+    const ids = [HUMAN_ID];
+    const names = { [HUMAN_ID]: humanName };
+    for (let i = 0; i < cpuCount; i++) {
+      const id = `cpu${i + 1}`;
+      ids.push(id);
+      names[id] = `CPU ${i + 1}`;
+    }
+    try {
+      const g = createGame(ids, names, practiceRules);
+      practiceStateRef.current = g;
+      setGameState(g);
+      setMyId(HUMAN_ID);
+      setMode('practice');
+      setPhase('game');
+      scheduleCpuTurn(g);
+    } catch (err) {
+      setError(err.message || String(err));
+    }
+  }
+
+  function scheduleCpuTurn(state) {
+    if (cpuTimerRef.current) { clearTimeout(cpuTimerRef.current); cpuTimerRef.current = null; }
+    if (!state || state.winner) return;
+    if (state.turn === HUMAN_ID) return;
+    const plan = cpuPlan(state, state.turn);
+    playCpuActions(state, plan, 0);
+  }
+
+  function playCpuActions(state, actions, i) {
+    if (i >= actions.length) {
+      // Pause between CPU turns so the final move reads clearly.
+      cpuTimerRef.current = setTimeout(() => scheduleCpuTurn(state), 900);
+      return;
+    }
+    const act = actions[i];
+    // Discards (turn-ender) get an extra beat to register visually.
+    const delay = act.type === 'discard' ? 1800 : 1500;
+    cpuTimerRef.current = setTimeout(() => {
+      const res = applyAction(state, state.turn, act);
+      if (!res.ok) {
+        setError(`CPU error: ${res.error}`);
+        scheduleCpuTurn(state);
+        return;
+      }
+      practiceStateRef.current = res.state;
+      setGameState(res.state);
+      playCpuActions(res.state, actions, i + 1);
+    }, delay);
+  }
+
+  const onStart = () => {
+    const res = net?.startGame?.();
+    if (res && !res.ok) setError(res.error);
+  };
+  const onUpdateRules = (rules) => net?.updateRules?.(rules);
+  const onRename = (newName) => {
+    setName(newName);
+    if (mode === 'host') net?.setName?.(newName);
+    else net?.sendRename?.(newName);
+  };
+  const onSendChat = (text) => net?.sendChat?.(text);
+  const onAction = (action) => {
+    if (mode === 'practice') {
+      const s = practiceStateRef.current;
+      if (!s) return;
+      const res = applyAction(s, HUMAN_ID, action);
+      if (!res.ok) { setError(res.error); return; }
+      setError(null);
+      practiceStateRef.current = res.state;
+      setGameState(res.state);
+      if (res.state.turn !== HUMAN_ID && !res.state.winner) scheduleCpuTurn(res.state);
+      return;
+    }
+    if (mode === 'host') {
+      const res = net.submitAction(action);
+      if (!res.ok) setError(res.error);
+    } else {
+      net.sendAction(action);
+    }
+  };
+
+  if (phase === 'stats') {
+    return (
+      <div className="app">
+        <Stats onBack={() => setPhase('home')} />
+      </div>
+    );
+  }
+
+  if (phase === 'home' || phase === 'connecting') {
+    return (
+      <div className="app">
+        <div className="lobby">
+          <h1>Skip-Bo</h1>
+          <div className="tagline">Play online with friends · free · no install</div>
+
+          <div className="card-panel">
+            <label style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Your name</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="Enter a name" />
+          </div>
+
+          <div className="card-panel">
+            <button onClick={host} disabled={phase === 'connecting'}>
+              {phase === 'connecting' && mode === null ? 'Creating room…' : 'Create a room'}
+            </button>
+            <div style={{ color: 'var(--muted)', fontSize: 12 }}>or join an existing one:</div>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))}
+              placeholder="ROOM"
+              maxLength={4}
+              style={{ textAlign: 'center', letterSpacing: 6, fontSize: 22, fontFamily: 'ui-monospace, monospace' }}
+            />
+            <button className="secondary" onClick={join} disabled={phase === 'connecting'}>
+              {phase === 'connecting' ? 'Joining…' : 'Join room'}
+            </button>
+          </div>
+
+          <div className="card-panel">
+            <div style={{ fontSize: 13, color: 'var(--muted)' }}>No friends around? Play offline:</div>
+            <button className="secondary" onClick={openPracticeSetup} disabled={phase === 'connecting'}>
+              Play vs CPU
+            </button>
+          </div>
+
+          {error && <div className="error">{error}</div>}
+
+          <button className="secondary" style={{ fontSize: 13 }} onClick={() => setPhase('stats')}>
+            View stats
+          </button>
+
+          <div style={{ fontSize: 11, color: 'var(--muted)', maxWidth: 360 }}>
+            Peer-to-peer via WebRTC. Host stays in this tab; if they close it the game ends.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'practice-setup') {
+    const playerCount = 1 + cpuCount;
+    const effStock = practiceRules.stockSize;
+    const decks = requiredDecks(playerCount, effStock, practiceRules.handSize);
+    const humanName = (name.trim() || 'You');
+    return (
+      <div className="app">
+        <div className="lobby">
+          <h1 style={{ fontSize: 32 }}>Practice vs CPU</h1>
+
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Players</div>
+            <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+              {humanName} + {cpuCount} CPU{cpuCount === 1 ? '' : 's'} ({playerCount} total)
+            </div>
+            <PracticeRuleRow
+              label="CPU opponents"
+              value={cpuCount}
+              options={[1, 2, 3, 4, 5, 6, 7].map((n) => [n, n])}
+              onChange={(v) => setCpuCount(v)}
+            />
+          </div>
+
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Rules</div>
+            <PracticeRuleRow
+              label="Stockpile size"
+              value={practiceRules.stockSize}
+              options={[[5, 5], [10, 10], [15, 15], [20, 20], [25, 25], [30, 30], [35, 35], [40, 40], [45, 45], [50, 50]]}
+              onChange={(v) => setPracticeRules((r) => ({ ...r, stockSize: v }))}
+            />
+            <PracticeRuleRow
+              label="Hand size"
+              value={practiceRules.handSize}
+              options={[[5, 5], [10, 10]]}
+              onChange={(v) => setPracticeRules((r) => ({ ...r, handSize: v }))}
+            />
+            <PracticeRuleRow
+              label="Max discard depth"
+              value={practiceRules.maxDiscardDepth ?? 'unlimited'}
+              options={[[4, 4], [6, 6], [8, 8], ['unlimited', null]]}
+              onChange={(v) => setPracticeRules((r) => ({ ...r, maxDiscardDepth: v }))}
+            />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              {decks === 1 ? '1 deck' : `${decks} decks`}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
+            <button className="secondary" onClick={goHome} style={{ flex: 1 }}>Back</button>
+            <button onClick={startPractice} style={{ flex: 2 }}>Start game</button>
+          </div>
+          {error && <div className="error">{error}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'lobby' && lobbyState) {
+    return (
+      <div className="app">
+        <Lobby
+          lobby={lobbyState}
+          isHost={mode === 'host'}
+          myId={myId}
+          onStart={onStart}
+          onUpdateRules={onUpdateRules}
+          onRename={onRename}
+          chatMessages={chatMessages}
+          onSendChat={onSendChat}
+          onLeave={goHome}
+          error={error}
+        />
+      </div>
+    );
+  }
+
+  if (phase === 'game' && gameState) {
+    const displayState = { ...gameState, roomCode: lobbyState?.roomCode || (mode === 'practice' ? 'SOLO' : '') };
+    return (
+      <div className="app">
+        <Game
+          state={displayState}
+          myId={myId}
+          onAction={onAction}
+          chatMessages={chatMessages}
+          onSendChat={onSendChat}
+          onLeave={goHome}
+          error={error}
+          hideChat={mode === 'practice'}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      <div className="lobby"><div>Loading…</div></div>
+    </div>
+  );
+}
+
+function PracticeRuleRow({ label, value, detail, options, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #2a5a48' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14 }}>{label}</div>
+        {detail && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{detail}</div>}
+      </div>
+      <select
+        value={String(value)}
+        onChange={(e) => {
+          const opt = options.find(([lbl]) => String(lbl) === e.target.value);
+          if (opt) onChange(opt[1]);
+        }}
+        style={{
+          background: 'var(--panel-2)',
+          color: 'var(--text)',
+          border: '1px solid #2a5a48',
+          borderRadius: 6,
+          padding: '6px 8px',
+          font: 'inherit',
+        }}
+      >
+        {options.map(([lbl]) => (
+          <option key={String(lbl)} value={String(lbl)}>{lbl}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
