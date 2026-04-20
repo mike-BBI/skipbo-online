@@ -1,7 +1,11 @@
-// Local profile + game history. Everything lives in localStorage;
-// there is no backend. Each device has its own independent profile.
-// At the end of a game the outcome is recorded with the stable
-// profileId so lifetime stats survive across sessions.
+// Profile cache + game history. The authoritative profile store is
+// Supabase (see profiles.js), but we mirror the selected profile into
+// localStorage so the app can read it synchronously on every render.
+// History is kept in both places: localStorage for immediate display
+// while the cloud round-trips, and Supabase (game_records) so lifetime
+// stats follow a profile across devices.
+
+import { recordGameForProfile } from './profiles.js';
 
 const PROFILE_KEY = 'skipbo.profile';
 const HISTORY_KEY = 'skipbo.history';
@@ -74,13 +78,52 @@ export function recordGame(state, profileId, humanGameId) {
       gameId: id,
       name: state.players[id]?.name ?? id,
       stockRemaining: state.players[id]?.stock.length ?? 0,
+      isWinner: id === winnerHumanId,
     })),
   };
   history.push(record);
   // Cap history so localStorage never grows unbounded.
   while (history.length > HISTORY_LIMIT) history.shift();
   localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  // Best-effort push to the cloud so stats follow this profile to any
+  // other device they sign in on. Fire-and-forget; local cache is the
+  // source of truth for the immediate UI.
+  recordGameForProfile(profileId, {
+    won: record.didIWin,
+    turnCount: record.turnCount,
+    durationMs: record.durationMs,
+    deckCount: record.deckCount,
+    rules: record.rules,
+    players: record.players,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+  });
   return record;
+}
+
+// Replace the locally-cached profile with one that came from Supabase
+// (id, name). Stats already keyed by profileId will continue to work.
+export function selectProfile({ id, name, color }) {
+  if (!id) return null;
+  const current = (() => {
+    try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) || null; } catch { return null; }
+  })();
+  const next = {
+    ...(current || {}),
+    id,
+    name: name ?? current?.name ?? '',
+    color: color ?? current?.color ?? COLORS[Math.floor(Math.random() * COLORS.length)],
+    createdAt: current?.createdAt ?? Date.now(),
+  };
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+  if (typeof next.name === 'string') localStorage.setItem('skipbo.name', next.name);
+  return next;
+}
+
+// Forget the current profile so the home screen shows the picker again.
+export function clearProfile() {
+  localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem('skipbo.name');
 }
 
 export function clearHistory() {

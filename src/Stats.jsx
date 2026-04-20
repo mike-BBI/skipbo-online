@@ -1,12 +1,50 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getProfile, setProfile, getHistory, computeStats, formatDuration, clearHistory } from './stats.js';
+import { fetchHistoryForProfile, supabaseEnabled } from './profiles.js';
+
+// Normalize a Supabase game_records row so it can share GameRow + the
+// stats helper with localStorage records.
+function adaptCloudRecord(row) {
+  const players = row.players || [];
+  const winner = players.find((p) => p.isWinner);
+  const endedAt = row.ended_at ? new Date(row.ended_at).getTime() : Date.now();
+  const startedAt = row.started_at ? new Date(row.started_at).getTime() : null;
+  return {
+    id: row.id,
+    endedAt,
+    startedAt,
+    durationMs: row.duration_ms ?? (startedAt ? endedAt - startedAt : null),
+    turnCount: row.turn_count,
+    didIWin: !!row.won,
+    winnerName: winner?.name || null,
+    rules: row.rules || {},
+    deckCount: row.deck_count || 1,
+    players,
+  };
+}
 
 export function Stats({ onBack }) {
   const [profile, setProfileState] = useState(getProfile());
-  const [history, setHistory] = useState(getHistory());
+  const [history, setHistory] = useState(() => {
+    // Start with localStorage so the UI has something to render while
+    // cloud data loads. Cloud results will replace this on arrival.
+    return getHistory().slice().reverse();
+  });
+  const [loadingCloud, setLoadingCloud] = useState(Boolean(supabaseEnabled && profile?.id));
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(profile);
   const stats = computeStats(history);
+
+  useEffect(() => {
+    if (!supabaseEnabled || !profile?.id) return;
+    let cancelled = false;
+    fetchHistoryForProfile(profile.id, 100).then((rows) => {
+      if (cancelled) return;
+      setHistory(rows.map(adaptCloudRecord));
+      setLoadingCloud(false);
+    });
+    return () => { cancelled = true; };
+  }, [profile?.id]);
 
   const saveProfile = () => {
     const cleanName = String(draft.name || '').slice(0, 20).trim();
@@ -16,12 +54,12 @@ export function Stats({ onBack }) {
   };
 
   const onClearHistory = () => {
-    if (!confirm('Clear all local game history? This cannot be undone.')) return;
+    if (!confirm('Clear local cached history? Cloud history will repopulate on the next load.')) return;
     clearHistory();
-    setHistory([]);
+    if (!supabaseEnabled) setHistory([]);
   };
 
-  const recent = [...history].reverse().slice(0, 20);
+  const recent = history.slice(0, 20);
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 620, margin: '0 auto', width: '100%' }}>
@@ -85,7 +123,10 @@ export function Stats({ onBack }) {
 
       {/* Lifetime stats */}
       <div className="card-panel">
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>Lifetime</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div style={{ fontWeight: 600 }}>Lifetime</div>
+          {loadingCloud && <div style={{ fontSize: 11, color: 'var(--muted)' }}>syncing…</div>}
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <Stat label="Games" value={stats.total} />
           <Stat label="Wins" value={stats.wins} />
@@ -100,7 +141,7 @@ export function Stats({ onBack }) {
       <div className="card-panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ fontWeight: 600 }}>Recent games</div>
-          {history.length > 0 && (
+          {history.length > 0 && !supabaseEnabled && (
             <button className="secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={onClearHistory}>
               Clear
             </button>
@@ -108,7 +149,7 @@ export function Stats({ onBack }) {
         </div>
         {recent.length === 0 ? (
           <div style={{ color: 'var(--muted)', fontStyle: 'italic', fontSize: 13 }}>
-            No games played yet. Finish a game and it'll show up here.
+            {loadingCloud ? 'Loading…' : "No games played yet. Finish a game and it'll show up here."}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -134,7 +175,8 @@ function Stat({ label, value }) {
 function GameRow({ record }) {
   const date = new Date(record.endedAt);
   const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const playerList = record.players.map((p) => p.name).join(', ');
+  const playerList = (record.players || []).map((p) => p.name).join(', ');
+  const stockSize = record.rules?.stockSize ?? record.rules?.stock_size;
   return (
     <div style={{ background: 'var(--panel-2)', borderRadius: 8, padding: '8px 10px', fontSize: 13 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -149,7 +191,10 @@ function GameRow({ record }) {
         <div style={{ fontSize: 11, color: 'var(--muted)' }}>{dateStr}</div>
       </div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
-        {playerList} · {formatDuration(record.durationMs)} · {record.deckCount > 1 ? `${record.deckCount} decks · ` : ''}stock {record.rules.stockSize}
+        {playerList}
+        {record.durationMs ? ` · ${formatDuration(record.durationMs)}` : ''}
+        {record.deckCount > 1 ? ` · ${record.deckCount} decks` : ''}
+        {stockSize ? ` · stock ${stockSize}` : ''}
       </div>
     </div>
   );

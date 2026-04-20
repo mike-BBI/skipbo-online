@@ -5,14 +5,11 @@
 // and `supabaseEnabled` is false, so the home screen just hides the
 // rooms list and the app keeps working with the code-entry flow.
 
-import { createClient } from '@supabase/supabase-js';
+import { supabase, supabaseEnabled } from './supabase.js';
 
-const URL = import.meta.env.VITE_SUPABASE_URL;
-const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export { supabaseEnabled };
 
-export const supabaseEnabled = Boolean(URL && KEY);
-
-const client = supabaseEnabled ? createClient(URL, KEY) : null;
+const client = supabase;
 
 // Rooms older than this are considered stale and filtered from the UI.
 // Host pings every HEARTBEAT_MS to stay fresh.

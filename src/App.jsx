@@ -5,7 +5,7 @@ import { Game } from './Game.jsx';
 import { Stats } from './Stats.jsx';
 import { createGame, applyAction, requiredDecks, MAX_PLAYERS } from './engine.js';
 import { cpuPlan } from './bot.js';
-import { getProfile, recordGame, setProfile } from './stats.js';
+import { getProfile, recordGame, setProfile, selectProfile, clearProfile } from './stats.js';
 import {
   supabaseEnabled,
   createRoom,
@@ -14,6 +14,7 @@ import {
   subscribeOpenRooms,
   HEARTBEAT_MS,
 } from './rooms.js';
+import { listProfiles, createProfile, touchProfile } from './profiles.js';
 
 const NAME_KEY = 'skipbo.name';
 const HUMAN_ID = 'human';
@@ -35,9 +36,59 @@ export default function App() {
   const [myId, setMyId] = useState(null);
   const [peerStatus, setPeerStatus] = useState(null);
   const [openRooms, setOpenRooms] = useState([]);
+  const [profileList, setProfileList] = useState([]);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [currentProfile, setCurrentProfile] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('skipbo.profile')) || null; } catch { return null; }
+  });
+  const [newProfileName, setNewProfileName] = useState('');
   const practiceStateRef = useRef(null);
   const cpuTimerRef = useRef(null);
   const recordedGameRef = useRef(false);
+
+  // Fetch the profile directory so the home screen can show the
+  // "who are you?" picker. Listed by most-recently-seen first.
+  useEffect(() => {
+    if (!supabaseEnabled) { setProfileLoaded(true); return; }
+    let cancelled = false;
+    listProfiles().then((list) => {
+      if (cancelled) return;
+      setProfileList(list);
+      setProfileLoaded(true);
+      // If the cached profile id no longer exists in the directory
+      // (e.g., deleted elsewhere, or a legacy local-only id), drop it
+      // so the picker re-appears.
+      if (currentProfile && !list.some((p) => p.id === currentProfile.id)) {
+        setCurrentProfile(null);
+        clearProfile();
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const pickProfile = (profile) => {
+    const saved = selectProfile(profile);
+    setCurrentProfile(saved);
+    setName(saved.name);
+    touchProfile(saved.id);
+  };
+
+  const addProfile = async () => {
+    const clean = newProfileName.trim().slice(0, 20);
+    if (!clean) { setError('Please enter a name.'); return; }
+    setError(null);
+    const res = await createProfile(clean);
+    if (!res.ok) { setError(res.error); return; }
+    setProfileList((list) => [res.profile, ...list.filter((p) => p.id !== res.profile.id)]);
+    pickProfile(res.profile);
+    setNewProfileName('');
+  };
+
+  const switchProfile = () => {
+    clearProfile();
+    setCurrentProfile(null);
+    setName('');
+  };
 
   useEffect(() => {
     return () => { net?.destroy(); };
@@ -260,15 +311,68 @@ export default function App() {
   }
 
   if (phase === 'home' || phase === 'connecting') {
+    const needsProfile = supabaseEnabled && profileLoaded && !currentProfile;
     return (
       <div className="app">
         <div className="lobby">
           <h1>Mav Family Skip-Bo</h1>
 
-          <div className="card-panel">
-            <label style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Your name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="Enter a name" />
-          </div>
+          {needsProfile ? (
+            <>
+              <div className="card-panel">
+                <div style={{ fontSize: 16, fontWeight: 600, alignSelf: 'flex-start' }}>Who are you?</div>
+                {profileList.length > 0 ? (
+                  <>
+                    <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Tap your name:</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {profileList.map((p) => (
+                        <button key={p.id} className="secondary" onClick={() => pickProfile(p)}>
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 13, color: 'var(--muted)' }}>No profiles yet — be the first.</div>
+                )}
+              </div>
+              <div className="card-panel">
+                <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Someone new?</div>
+                <input
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  maxLength={20}
+                  placeholder="Enter your name"
+                  onKeyDown={(e) => { if (e.key === 'Enter') addProfile(); }}
+                />
+                <button onClick={addProfile}>Create profile</button>
+              </div>
+              {error && <div className="error">{error}</div>}
+            </>
+          ) : (
+            <div className="card-panel" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>Playing as</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{currentProfile?.name || name || 'Guest'}</div>
+              </div>
+              {currentProfile && (
+                <button className="secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={switchProfile}>
+                  Switch
+                </button>
+              )}
+              {!supabaseEnabled && (
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  maxLength={20}
+                  placeholder="Enter a name"
+                  style={{ maxWidth: 180 }}
+                />
+              )}
+            </div>
+          )}
+
+          {!needsProfile && (<>
 
           {supabaseEnabled && openRooms.length > 0 && (
             <div className="card-panel">
@@ -318,6 +422,7 @@ export default function App() {
               Play vs CPU
             </button>
           </div>
+          </>)}
 
           {error && <div className="error">{error}</div>}
           {peerStatus && <PeerStatusLine status={peerStatus} />}
