@@ -495,7 +495,12 @@ export default function App() {
     const maxCpus = Math.min(currentGame.maxPlayers - 1, 3);
     const safeCpus = Math.max(1, Math.min(cpuCount, maxCpus));
     const playerCount = 1 + safeCpus;
-    const targetScore = practiceRules.targetScore ?? currentGame.defaultRules.targetScore ?? 101;
+    const mode = practiceRules.mode ?? currentGame.defaultRules.mode ?? 'target';
+    const targetScore = practiceRules.targetScore ?? currentGame.defaultRules.targetScore ?? 100;
+    const targetRounds = practiceRules.targetRounds ?? currentGame.defaultRules.targetRounds ?? 3;
+    const scoreOptions = Array.from({ length: 10 }, (_, i) => [(i + 1) * 50, (i + 1) * 50]);
+    const roundOptions = Array.from({ length: 10 }, (_, i) => [`${i + 1} round${i === 0 ? '' : 's'}`, i + 1]);
+    const patchRules = (patch) => setPracticeRules((r) => ({ ...currentGame.defaultRules, ...r, ...patch }));
     return (
       <div className="app">
         <div className="lobby">
@@ -514,14 +519,32 @@ export default function App() {
           </div>
           <div className="card-panel">
             <div style={{ fontWeight: 600, marginBottom: 6 }}>Rules</div>
-            <PracticeRuleRow
-              label="Target score"
-              value={targetScore}
-              options={[[51, 51], [101, 101], [151, 151], [201, 201]]}
-              onChange={(v) => setPracticeRules((r) => ({ ...currentGame.defaultRules, ...r, targetScore: v }))}
-            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <span style={{ fontSize: 14 }}>Match ends</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className={mode === 'target' ? '' : 'secondary'} onClick={() => patchRules({ mode: 'target' })} style={{ padding: '4px 10px', fontSize: 13 }}>By score</button>
+                <button className={mode === 'rounds' ? '' : 'secondary'} onClick={() => patchRules({ mode: 'rounds' })} style={{ padding: '4px 10px', fontSize: 13 }}>By rounds</button>
+              </div>
+            </div>
+            {mode === 'target' ? (
+              <PracticeRuleRow
+                label="Target score"
+                value={targetScore}
+                options={scoreOptions}
+                onChange={(v) => patchRules({ targetScore: v })}
+              />
+            ) : (
+              <PracticeRuleRow
+                label="Play to"
+                value={targetRounds}
+                options={roundOptions}
+                onChange={(v) => patchRules({ targetRounds: v })}
+              />
+            )}
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-              Multi-round. First to target wins the match.
+              {mode === 'target'
+                ? `First to ${targetScore} wins.`
+                : `Highest score after ${targetRounds} round${targetRounds === 1 ? '' : 's'} wins.`}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>

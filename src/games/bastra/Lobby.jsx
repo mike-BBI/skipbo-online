@@ -7,7 +7,11 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
   const me = lobby.players.find((p) => p.id === myId);
   const [nameDraft, setNameDraft] = useState(me?.name || '');
   const startDisabled = lobby.players.length < MIN_PLAYERS;
-  const targetScore = lobby.rules?.targetScore ?? 101;
+  const mode = lobby.rules?.mode || 'target';
+  const targetScore = lobby.rules?.targetScore ?? 100;
+  const targetRounds = lobby.rules?.targetRounds ?? 3;
+  const scoreOptions = Array.from({ length: 10 }, (_, i) => [(i + 1) * 50, (i + 1) * 50]);
+  const roundOptions = Array.from({ length: 10 }, (_, i) => [`${i + 1} round${i === 0 ? '' : 's'}`, i + 1]);
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 600, margin: '0 auto', width: '100%' }}>
@@ -51,15 +55,50 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, c
 
       <div style={{ background: 'var(--panel)', borderRadius: 10, padding: 12 }}>
         <div style={{ fontWeight: 600, marginBottom: 8 }}>Rules</div>
-        <RuleRow
-          label="Target score"
-          value={targetScore}
-          options={[[51, 51], [101, 101], [151, 151], [201, 201]]}
-          disabled={!isHost}
-          onChange={(v) => onUpdateRules?.({ targetScore: v })}
-        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+          <span style={{ fontSize: 14 }}>Match ends</span>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className={mode === 'target' ? '' : 'secondary'}
+              disabled={!isHost}
+              onClick={() => onUpdateRules?.({ mode: 'target' })}
+              style={{ padding: '4px 10px', fontSize: 13 }}
+            >
+              By score
+            </button>
+            <button
+              className={mode === 'rounds' ? '' : 'secondary'}
+              disabled={!isHost}
+              onClick={() => onUpdateRules?.({ mode: 'rounds' })}
+              style={{ padding: '4px 10px', fontSize: 13 }}
+            >
+              By rounds
+            </button>
+          </div>
+        </div>
+        {mode === 'target' ? (
+          <RuleRow
+            label="Target score"
+            value={targetScore}
+            options={scoreOptions}
+            disabled={!isHost}
+            onChange={(v) => onUpdateRules?.({ targetScore: v })}
+          />
+        ) : (
+          <RuleRow
+            label="Play to"
+            value={targetRounds}
+            options={roundOptions}
+            disabled={!isHost}
+            onChange={(v) => onUpdateRules?.({ targetRounds: v })}
+          />
+        )}
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-          Jacks capture everything. Matching ranks capture. Clearing the table = Bastra (+10). First to {targetScore} wins.
+          Jacks capture everything. Matching ranks capture. Clearing the table = Bastra (+10).
+          {' '}
+          {mode === 'target'
+            ? `First to ${targetScore} wins.`
+            : `Highest score after ${targetRounds} round${targetRounds === 1 ? '' : 's'} wins.`}
         </div>
       </div>
 

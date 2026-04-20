@@ -34,10 +34,12 @@ export const DEFAULT_RULES = {
   tableInitSize: 4,
   bastraPoints: 10,
   mostCardsPoints: 3,
-  // First to this cumulative score wins. Evaluated at the end of
-  // each round. 101 is the common "short game" target; 151 is a
-  // longer match.
-  targetScore: 101,
+  // Match-length mode. 'target' ends when a player's cumulative
+  // score reaches `targetScore`; 'rounds' ends after `targetRounds`
+  // rounds have been played and the highest cumulative score wins.
+  mode: 'target',
+  targetScore: 100,
+  targetRounds: 3,
 };
 
 export function buildDeck() {
@@ -343,14 +345,21 @@ function endRoundIfDone(next) {
   next.roundScores = roundScores;
   next.roundEnded = true;
 
-  // Target reached? End the match. Otherwise the UI will prompt for
-  // another round via the 'nextRound' action.
+  // Check match-end condition based on configured mode.
   let leader = next.playerOrder[0];
   for (const id of next.playerOrder) {
     if (next.players[id].cumulativeScore > next.players[leader].cumulativeScore) leader = id;
   }
-  const target = next.rules.targetScore ?? 101;
-  if (next.players[leader].cumulativeScore >= target) {
+  const mode = next.rules.mode || 'target';
+  let matchOver = false;
+  if (mode === 'rounds') {
+    const targetRounds = next.rules.targetRounds ?? 3;
+    if ((next.round || 1) >= targetRounds) matchOver = true;
+  } else {
+    const target = next.rules.targetScore ?? 100;
+    if (next.players[leader].cumulativeScore >= target) matchOver = true;
+  }
+  if (matchOver) {
     next.winner = leader;
     next.log.push(`🎉 ${next.players[leader].name} wins the match at ${next.players[leader].cumulativeScore} points!`);
   } else {
@@ -404,21 +413,29 @@ export function applyAction(state, playerId, action) {
 // Catch any bug that duplicates a card. Runs in dev only.
 function debugAssertNoDuplicates(state) {
   const seen = new Map();
+  const dups = [];
   const check = (card, where) => {
     if (!card || typeof card !== 'object') return;
     const k = `${card.rank}-${card.suit}`;
     if (seen.has(k)) {
-      // eslint-disable-next-line no-console
-      console.warn(`[Bastra] duplicate card ${k} — also seen in ${seen.get(k)}, now in ${where}`);
+      dups.push({ key: k, previously: seen.get(k), nowAlsoIn: where });
     } else {
       seen.set(k, where);
     }
   };
-  for (const c of state.table || []) check(c, 'table');
-  for (const c of state.deck || []) check(c, 'deck');
+  for (let i = 0; i < (state.table || []).length; i++) check(state.table[i], `table[${i}]`);
+  for (let i = 0; i < (state.deck || []).length; i++) check(state.deck[i], `deck[${i}]`);
   for (const id of state.playerOrder || []) {
     const p = state.players[id];
-    for (const c of p.hand || []) check(c, `${id}.hand`);
-    for (const c of p.captures || []) check(c, `${id}.captures`);
+    for (let i = 0; i < (p.hand || []).length; i++) check(p.hand[i], `${id}.hand[${i}]`);
+    for (let i = 0; i < (p.captures || []).length; i++) check(p.captures[i], `${id}.captures[${i}]`);
+  }
+  if (dups.length > 0) {
+    // eslint-disable-next-line no-console
+    console.error('[Bastra] DUPLICATE CARDS DETECTED', {
+      dups,
+      lastMove: state.lastMove,
+      lastLog: state.log?.slice(-5),
+    });
   }
 }

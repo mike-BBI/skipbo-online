@@ -49,69 +49,91 @@
 .pc.playable:hover { transform: translateY(-4px); }
 .pc.disabled { opacity: 0.8; cursor: default; }
 
-/* Opponent move play-by-play. Floats above the board and sticks
-   around long enough to parse what just happened. */
-@keyframes move-event-in {
-  0%   { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.94); }
-  15%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-  85%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.98); }
-}
-.move-event {
-  position: fixed;
-  top: 64px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 12px 18px;
-  border-radius: 12px;
-  background: linear-gradient(180deg,
-    hsla(var(--player-hue, 48), 55%, 22%, 0.97),
-    hsla(var(--player-hue, 48), 50%, 14%, 0.97));
-  border: 2px solid hsl(var(--player-hue, 48), 80%, 60%);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
-  color: #fff;
-  z-index: 80;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  animation: move-event-in 2.4s ease-out forwards;
-  max-width: 88vw;
-}
-.move-event-header {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  color: hsl(var(--player-hue, 48), 100%, 82%);
-}
-.move-event-played { display: flex; justify-content: center; }
-.move-event-arrow {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: hsl(var(--player-hue, 48), 100%, 72%);
-}
-.move-event-captured {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: 320px;
-}
-.move-event-played .pc,
-.move-event-captured .pc {
-  --card-w: 44px;
-  --card-h: 66px;
-}
+.board.bastra .build-area { position: relative; }
 
 .bastra-table {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  /* Two explicit rows sized to a full card so the container doesn't
+     shrink when only one card is on the table. The box-sizing is
+     border-box globally, so height already includes our padding. */
+  grid-template-rows: var(--card-h) var(--card-h);
+  grid-auto-columns: var(--card-w);
   gap: 8px;
   justify-content: center;
-  min-height: var(--card-h);
+  align-content: center;
+  align-items: center;
+  height: calc(var(--card-h) * 2 + 8px + 20px);
   padding: 10px;
+}
+
+/* Jack sweep: the played Jack floats in over the whole table area
+   (enlarged + rotated), hangs for a beat while the cards beneath
+   "slide under" it, then everything flies off together. The cards
+   themselves already get a capture animation from .pc.capturing — we
+   just add a bit more drama on top. */
+@keyframes jack-sweep-enter {
+  0%   { opacity: 0; transform: scale(0.4) rotate(-18deg); }
+  25%  { opacity: 1; transform: scale(2) rotate(4deg); }
+  45%  { transform: scale(1.9) rotate(-2deg); }
+  60%  { transform: scale(1.95) rotate(0deg); }
+  100% { opacity: 0; transform: scale(1.5) translateY(-140px) rotate(6deg); }
+}
+.jack-sweep-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 20;
+  filter: drop-shadow(0 0 22px hsla(var(--player-hue, 48), 90%, 55%, 0.6));
+}
+.jack-sweep-card.pc {
+  transform-origin: center;
+  animation: jack-sweep-enter 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+/* Odd card count: the last card spans both rows so it sits
+   vertically centered in its own column instead of dangling at the
+   top of a half-filled column. */
+.bastra-table .pc.span-rows {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+/* Opponent move played out in-place on the table. A capture shows
+   the captured cards + the played card glowing, then they slide up
+   off the table toward the capturer; a place-only move just flies
+   the new card in. Durations line up with the 1.7s animEvent timer
+   in Game.jsx. */
+@keyframes bastra-card-place {
+  0%   { opacity: 0; transform: translateY(-60px) scale(0.7); }
+  55%  { opacity: 1; transform: translateY(0) scale(1.08); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes bastra-card-capture {
+  0%   { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+  20%  { box-shadow: 0 0 18px 6px rgba(245, 179, 58, 0.8); transform: scale(1.08); }
+  45%  { box-shadow: 0 0 22px 8px rgba(245, 179, 58, 0.9); transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.55) translateY(-70px); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+}
+@keyframes bastra-card-played-capture {
+  0%   { opacity: 0; transform: translateY(-70px) scale(0.6); }
+  25%  { opacity: 1; transform: translateY(0) scale(1.08); box-shadow: 0 0 18px 6px rgba(245, 179, 58, 0.8); }
+  50%  { transform: scale(1); box-shadow: 0 0 22px 8px rgba(245, 179, 58, 0.9); }
+  100% { opacity: 0; transform: scale(0.55) translateY(-70px); box-shadow: 0 0 0 0 rgba(245, 179, 58, 0); }
+}
+.bastra-table .pc.capturing { animation: bastra-card-capture 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards; z-index: 5; }
+.bastra-table .pc.played-incoming { animation: bastra-card-played-capture 1.7s cubic-bezier(0.4, 0, 0.6, 1) forwards; z-index: 6; }
+.bastra-table .pc.just-placed { animation: bastra-card-place 0.7s ease-out; z-index: 4; }
+
+/* Reserves space for the controls slot even when empty so the
+   Table container height stays stable whether or not anything is
+   selected. Fixed height = message row + button row + gaps. */
+.capture-controls-slot {
+  height: 84px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 /* Capture controls: message line + a fixed-position button row so

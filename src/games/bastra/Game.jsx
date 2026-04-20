@@ -24,14 +24,6 @@ function seededShuffle(seed, arr) {
 
 export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave, error, hideChat }) {
   const [showChat, setShowChat] = useState(false);
-  const [turnAnnounceKey, setTurnAnnounceKey] = useState(0);
-  const lastTurnRef = useRef(state.turn);
-  useEffect(() => {
-    if (lastTurnRef.current !== state.turn) {
-      lastTurnRef.current = state.turn;
-      setTurnAnnounceKey((k) => k + 1);
-    }
-  }, [state.turn]);
 
   const me = state.players[myId];
   const isMyTurn = state.turn === myId && !state.winner;
@@ -45,8 +37,6 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     if (idx < 0) return 153;
     return shuffledPalette[idx % shuffledPalette.length];
   };
-  const activeHue = hueFor(state.turn);
-  const activeName = state.turn === myId ? 'Your' : `${state.players[state.turn]?.name || 'Player'}'s`;
 
   // Interactive capture: click a hand card to select it, then click
   // table cards to build a capture set. Confirm commits; the engine
@@ -81,22 +71,22 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     }
   }, [state.players, state.playerOrder]);
 
-  // Play-by-play for opponent moves. Every time the engine records a
-  // new lastMove that wasn't ours, surface a floating card showing
-  // what they played and what (if anything) they captured. Stays on
-  // screen long enough to track — the CPU pacing already leaves
-  // plenty of time before the next move.
-  const [moveEvent, setMoveEvent] = useState(null);
+  // Move animation: play every completed move out directly on the
+  // table — the played card flies into place, captures highlight and
+  // sweep off, Jacks blanket the whole board before carrying the
+  // cards away. Applies to both the human's own moves and opponents'
+  // so the feedback is symmetrical.
+  const [animEvent, setAnimEvent] = useState(null);
   const lastMoveVersionRef = useRef(state.version);
   useEffect(() => {
     if (state.version === lastMoveVersionRef.current) return;
     lastMoveVersionRef.current = state.version;
     const lm = state.lastMove;
-    if (!lm || lm.playerId === myId) { setMoveEvent(null); return; }
-    setMoveEvent({ ...lm, key: `mv-${state.version}` });
-    const t = setTimeout(() => setMoveEvent(null), 2400);
+    if (!lm) { setAnimEvent(null); return; }
+    setAnimEvent({ ...lm, key: `anim-${state.version}` });
+    const t = setTimeout(() => setAnimEvent(null), 1700);
     return () => clearTimeout(t);
-  }, [state.version, state.lastMove, myId]);
+  }, [state.version, state.lastMove]);
 
   const selectedCard = selectedHandIdx != null ? me?.hand[selectedHandIdx] : null;
   const selectedRanks = selectedTable.map((i) => state.table[i]?.rank).filter((r) => r != null);
@@ -152,40 +142,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         </div>
       )}
 
-      {moveEvent && !bastraEvent && (
-        <div
-          key={moveEvent.key}
-          className="move-event"
-          style={{ '--player-hue': hueFor(moveEvent.playerId) }}
-        >
-          <div className="move-event-header">
-            {state.players[moveEvent.playerId]?.name || 'Opponent'} played
-          </div>
-          <div className="move-event-played">
-            <PlayingCard card={moveEvent.card} />
-          </div>
-          {moveEvent.capturedCards.length > 0 ? (
-            <>
-              <div className="move-event-arrow">captured</div>
-              <div className="move-event-captured">
-                {moveEvent.capturedCards.map((c, i) => (
-                  <PlayingCard key={i} card={c} />
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="move-event-arrow" style={{ color: 'var(--muted)' }}>
-              played to the table
-            </div>
-          )}
-        </div>
-      )}
 
-      {!state.winner && turnAnnounceKey > 0 && !bastraEvent && (
-        <div key={turnAnnounceKey} className="turn-announcement" style={{ '--player-hue': activeHue }}>
-          {activeName} turn
-        </div>
-      )}
 
       <div className="top-bar">
         <div>Room <span className="room-code">{state.roomCode || ''}</span></div>
@@ -232,74 +189,173 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
 
       <div className="build-area">
         <div className="build-label">Table</div>
-        <div className="bastra-table">
-          {state.table.length === 0 ? (
-            <div style={{ color: 'var(--muted)', fontStyle: 'italic', padding: 12 }}>Empty — capture next!</div>
-          ) : (
-            state.table.map((c, i) => {
-              const sel = selectedTable.includes(i);
-              return (
-                <PlayingCard
-                  key={`t-${i}`}
-                  card={c}
-                  onClick={() => toggleTableSelect(i)}
-                  selected={sel}
-                  className={isMyTurn && !isJackSelected ? 'playable' : ''}
-                />
-              );
-            })
-          )}
-        </div>
-        {(selectedHandIdx != null || selectedTable.length > 0) && !state.winner && !state.roundEnded && (
-          (() => {
-            // Compute message + primary action once so the button row
-            // stays in a consistent layout regardless of the state.
-            let message = '';
-            let messageTone = 'muted'; // 'muted' | 'ok' | 'error'
-            let primaryLabel = null;
-            let primaryAction = null;
-
-            if (selectedHandIdx == null) {
-              message = `${selectedTable.length} table card${selectedTable.length === 1 ? '' : 's'} selected — tap a hand card`;
-            } else if (isJackSelected) {
-              message = state.table.length > 0
-                ? `Jack captures all ${state.table.length} table cards`
-                : 'Jack goes straight to your pile';
-              primaryLabel = 'Play Jack';
-              primaryAction = confirmPlay;
-            } else if (selectedTable.length === 0) {
-              message = '';
-              primaryLabel = 'Play to table';
-              primaryAction = confirmPlay;
-            } else if (captureIsValid) {
-              message = `Capture ${selectedTable.length} card${selectedTable.length === 1 ? '' : 's'}${selectedTable.length === state.table.length ? ' — Bastra!' : ''}`;
-              messageTone = 'ok';
-              primaryLabel = 'Capture';
-              primaryAction = confirmPlay;
-            } else {
-              message = "Selection doesn't add up";
-              messageTone = 'error';
-              primaryLabel = 'Clear';
-              primaryAction = () => setSelectedTable([]);
+        {/* Jack sweep overlay — when a J is played on a non-empty
+            table the giant J floats in over the whole area, the
+            cards slide under it, then everything sweeps off together. */}
+        {animEvent && animEvent.card?.rank === 11 && animEvent.capturedCards.length > 0 && (
+          <div
+            key={animEvent.key}
+            className="jack-sweep-overlay"
+            style={{ '--player-hue': hueFor(animEvent.playerId) }}
+          >
+            <PlayingCard card={animEvent.card} className="jack-sweep-card" />
+          </div>
+        )}
+        {(() => {
+          // Build the display list. In the steady state it's just
+          // state.table. During an opponent capture animation we
+          // reconstruct the pre-move table (captured cards at their
+          // original positions) and append the played card so the
+          // user can watch the capture play out in place.
+          const items = [];
+          if (animEvent && animEvent.capturedCards.length > 0) {
+            const positions = new Set(animEvent.capturedPositions);
+            const capByPos = new Map();
+            animEvent.capturedPositions.forEach((pos, k) => capByPos.set(pos, animEvent.capturedCards[k]));
+            const total = state.table.length + animEvent.capturedCards.length;
+            let stateIdx = 0;
+            for (let i = 0; i < total; i++) {
+              if (positions.has(i)) {
+                const c = capByPos.get(i);
+                items.push({ key: `cap-${c.rank}-${c.suit}`, card: c, capturing: true });
+              } else {
+                const c = state.table[stateIdx++];
+                items.push({ key: `t-${c.rank}-${c.suit}`, card: c, idx: stateIdx - 1 });
+              }
             }
+            items.push({
+              key: `played-${animEvent.card.rank}-${animEvent.card.suit}`,
+              card: animEvent.card,
+              capturing: true,
+              played: true,
+            });
+          } else if (animEvent && animEvent.placed) {
+            // Place-only animation: state.table already has the played
+            // card. Flag it so CSS can fly it in.
+            state.table.forEach((c, i) => {
+              items.push({
+                key: `t-${c.rank}-${c.suit}`,
+                card: c,
+                idx: i,
+                justPlaced: i === (animEvent.placedIndex ?? state.table.length - 1),
+              });
+            });
+          } else {
+            state.table.forEach((c, i) => {
+              items.push({ key: `t-${c.rank}-${c.suit}`, card: c, idx: i });
+            });
+          }
+
+          if (items.length === 0) {
+            // Empty table: show four dashed placeholder slots in a
+            // 2x2 grid so the area reads as "these spots are empty"
+            // rather than printing text that disappears once cards
+            // land. Matches the Skip-Bo empty-pile treatment.
+            const slotCount = state.rules.tableInitSize || 4;
             return (
-              <div className="capture-controls">
-                <div className={`capture-message tone-${messageTone}`}>{message || '\u00A0'}</div>
-                <div className="capture-buttons">
-                  <button className="secondary" onClick={cancelSelection}>Cancel</button>
-                  <button
-                    onClick={primaryAction || (() => {})}
-                    disabled={!primaryAction}
-                    className={primaryAction ? '' : 'secondary'}
-                    style={primaryAction ? {} : { visibility: 'hidden' }}
-                  >
-                    {primaryLabel || ' '}
-                  </button>
-                </div>
+              <div className="bastra-table">
+                {Array.from({ length: slotCount }).map((_, i) => (
+                  <PlayingCard key={`slot-${i}`} card={null} className="table-slot" />
+                ))}
               </div>
             );
-          })()
-        )}
+          }
+
+          // Explicit grid positions so the table fills the same way
+          // every time, regardless of insertion order:
+          //   1      → top-left
+          //   2      → top-right
+          //   3      → bottom-left (upside-down L)
+          //   4      → bottom-right (full 2x2)
+          //   5, 6   → add column 3: top, then bottom
+          //   7, 8   → add column 4: top, then bottom
+          //   ...    → each new pair fills a fresh column.
+          const gridPos = (i) => {
+            if (i < 4) return { row: Math.floor(i / 2) + 1, col: (i % 2) + 1 };
+            const beyond = i - 4;
+            return { row: (beyond % 2) + 1, col: Math.floor(beyond / 2) + 3 };
+          };
+          return (
+            <div className="bastra-table">
+              {items.map((item, gridIdx) => {
+                const sel = item.idx !== undefined && selectedTable.includes(item.idx);
+                const classes = [
+                  item.capturing ? 'capturing' : '',
+                  item.played ? 'played-incoming' : '',
+                  item.justPlaced ? 'just-placed' : '',
+                  !animEvent && isMyTurn && !isJackSelected ? 'playable' : '',
+                ].filter(Boolean).join(' ');
+                const onClick = !animEvent && item.idx !== undefined
+                  ? () => toggleTableSelect(item.idx)
+                  : undefined;
+                const { row, col } = gridPos(gridIdx);
+                return (
+                  <PlayingCard
+                    key={item.key}
+                    card={item.card}
+                    onClick={onClick}
+                    selected={sel}
+                    className={classes}
+                    style={{ gridRow: row, gridColumn: col }}
+                  />
+                );
+              })}
+            </div>
+          );
+        })()}
+        {/* Controls slot reserves a fixed height even when empty so
+            the Table container doesn't shift between selection and
+            idle states. Inner controls appear/disappear inside. */}
+        <div className="capture-controls-slot">
+          {(selectedHandIdx != null || selectedTable.length > 0) && !state.winner && !state.roundEnded && (
+            (() => {
+              let message = '';
+              let messageTone = 'muted';
+              let primaryLabel = null;
+              let primaryAction = null;
+
+              if (selectedHandIdx == null) {
+                message = `${selectedTable.length} table card${selectedTable.length === 1 ? '' : 's'} selected — tap a hand card`;
+              } else if (isJackSelected) {
+                message = state.table.length > 0
+                  ? `Jack captures all ${state.table.length} table cards`
+                  : 'Jack goes straight to your pile';
+                primaryLabel = 'Play Jack';
+                primaryAction = confirmPlay;
+              } else if (selectedTable.length === 0) {
+                message = '';
+                primaryLabel = 'Play to table';
+                primaryAction = confirmPlay;
+              } else if (captureIsValid) {
+                message = `Capture ${selectedTable.length} card${selectedTable.length === 1 ? '' : 's'}${selectedTable.length === state.table.length ? ' — Bastra!' : ''}`;
+                messageTone = 'ok';
+                primaryLabel = 'Capture';
+                primaryAction = confirmPlay;
+              } else {
+                message = "Selection doesn't add up";
+                messageTone = 'error';
+                primaryLabel = 'Clear';
+                primaryAction = () => setSelectedTable([]);
+              }
+              return (
+                <div className="capture-controls">
+                  <div className={`capture-message tone-${messageTone}`}>{message || '\u00A0'}</div>
+                  <div className="capture-buttons">
+                    <button className="secondary" onClick={cancelSelection}>Cancel</button>
+                    <button
+                      onClick={primaryAction || (() => {})}
+                      disabled={!primaryAction}
+                      className={primaryAction ? '' : 'secondary'}
+                      style={primaryAction ? {} : { visibility: 'hidden' }}
+                    >
+                      {primaryLabel || ' '}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </div>
       </div>
 
       <div className="hand-wrap">
