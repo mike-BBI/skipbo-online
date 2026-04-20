@@ -2,14 +2,12 @@ import { useState } from 'react';
 import { Chat } from '../../Chat.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS } from './engine.js';
 
-// Bastra lobby is intentionally minimal — the MVP has no tunable
-// rules, so this is just a shared waiting room until the host hits
-// Start.
-export function Lobby({ lobby, isHost, myId, onStart, onRename, chatMessages, onSendChat, onLeave, error, peerStatus }) {
+export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, chatMessages, onSendChat, onLeave, error, peerStatus }) {
   const [editingName, setEditingName] = useState(false);
   const me = lobby.players.find((p) => p.id === myId);
   const [nameDraft, setNameDraft] = useState(me?.name || '');
   const startDisabled = lobby.players.length < MIN_PLAYERS;
+  const targetScore = lobby.rules?.targetScore ?? 101;
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 600, margin: '0 auto', width: '100%' }}>
@@ -51,8 +49,18 @@ export function Lobby({ lobby, isHost, myId, onStart, onRename, chatMessages, on
         )}
       </div>
 
-      <div style={{ background: 'var(--panel)', borderRadius: 10, padding: 12, fontSize: 13, color: 'var(--muted)' }}>
-        First to capture the table after an opponent's card gets a Bastra (+10 pts). Jacks capture everything. Highest score at the end of the deck wins.
+      <div style={{ background: 'var(--panel)', borderRadius: 10, padding: 12 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Rules</div>
+        <RuleRow
+          label="Target score"
+          value={targetScore}
+          options={[[51, 51], [101, 101], [151, 151], [201, 201]]}
+          disabled={!isHost}
+          onChange={(v) => onUpdateRules?.({ targetScore: v })}
+        />
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+          Jacks capture everything. Matching ranks capture. Clearing the table = Bastra (+10). First to {targetScore} wins.
+        </div>
       </div>
 
       {isHost ? (
@@ -66,6 +74,24 @@ export function Lobby({ lobby, isHost, myId, onStart, onRename, chatMessages, on
       {error && <div className="error">{error}</div>}
 
       <Chat messages={chatMessages} onSend={onSendChat} />
+    </div>
+  );
+}
+
+function RuleRow({ label, value, options, onChange, disabled }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+      <span style={{ fontSize: 14 }}>{label}</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ padding: '4px 8px', borderRadius: 6, background: 'var(--panel-2)', color: 'var(--text)', border: '1px solid #2a5a48' }}
+      >
+        {options.map(([label, v]) => (
+          <option key={label} value={v}>{label}</option>
+        ))}
+      </select>
     </div>
   );
 }

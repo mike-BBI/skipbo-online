@@ -140,22 +140,56 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
 
       {error && <div className="error">{error}</div>}
 
+      {state.roundEnded && !state.winner && (
+        <div className="winner-overlay">
+          <h2>Round {state.round} complete</h2>
+          <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+            First to {state.rules.targetScore ?? 101} wins
+          </div>
+          <table style={{ borderCollapse: 'collapse', fontSize: 14, marginTop: 4 }}>
+            <thead>
+              <tr style={{ color: 'var(--muted)' }}>
+                <th style={{ textAlign: 'left', padding: '4px 10px' }}>Player</th>
+                <th style={{ textAlign: 'right', padding: '4px 10px' }}>This round</th>
+                <th style={{ textAlign: 'right', padding: '4px 10px' }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.playerOrder.map((id) => {
+                const p = state.players[id];
+                const rs = state.roundScores?.[id] ?? 0;
+                return (
+                  <tr key={id}>
+                    <td style={{ padding: '4px 10px', fontWeight: 600 }}>{p.name}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right' }}>{rs}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', fontWeight: 600 }}>
+                      {p.cumulativeScore}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <button onClick={() => onAction({ type: 'nextRound' })}>Next round</button>
+        </div>
+      )}
+
       {state.winner && (
         <div className="winner-overlay">
-          <h2>{state.winner === myId ? '🎉 You won!' : `${state.players[state.winner].name} wins`}</h2>
-          <div style={{ fontSize: 16 }}>Final scores:</div>
+          <h2>{state.winner === myId ? '🎉 You won the match!' : `${state.players[state.winner].name} wins the match`}</h2>
+          <div style={{ fontSize: 16 }}>Final scores after {state.round} round{state.round === 1 ? '' : 's'}:</div>
           <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 14 }}>
-            {state.playerOrder.map((id) => {
-              const p = state.players[id];
-              return (
-                <li key={id}>
-                  <strong>{p.name}</strong>: {p.score} pts
-                  <span style={{ color: 'var(--muted)', marginLeft: 6 }}>
-                    ({p.captures.length} cards{p.bastraCount ? `, ${p.bastraCount} Bastra` : ''})
-                  </span>
-                </li>
-              );
-            })}
+            {state.playerOrder
+              .slice()
+              .sort((a, b) => state.players[b].cumulativeScore - state.players[a].cumulativeScore)
+              .map((id) => {
+                const p = state.players[id];
+                return (
+                  <li key={id}>
+                    <strong>{p.name}</strong>: {p.cumulativeScore} pts
+                  </li>
+                );
+              })}
           </ul>
           <button onClick={onLeave}>Back to lobby</button>
         </div>

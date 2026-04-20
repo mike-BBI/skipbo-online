@@ -34,6 +34,10 @@ export const DEFAULT_RULES = {
   tableInitSize: 4,
   bastraPoints: 10,
   mostCardsPoints: 3,
+  // First to this cumulative score wins. Evaluated at the end of
+  // each round. 101 is the common "short game" target; 151 is a
+  // longer match.
+  targetScore: 101,
 };
 
 export function buildDeck() {
@@ -86,6 +90,8 @@ export function createGame(playerIds, names = {}, rulesIn = {}) {
       captures: [],
       bastraCount: 0,
       score: 0,
+      // Persists across rounds; added to at each round's end.
+      cumulativeScore: 0,
     };
   }
 
@@ -100,11 +106,44 @@ export function createGame(playerIds, names = {}, rulesIn = {}) {
     deck,
     table,
     lastCapturer: null,
-    log: [`Round started with ${playerIds.length} players.`],
+    round: 1,
+    roundScores: null,      // per-player round scores, set when a round ends
+    log: [`Round 1 started with ${playerIds.length} players.`],
     winner: null,
     roundEnded: false,
     version: 0,
   };
+}
+
+// Reset the engine state for a fresh round after scores were tallied.
+// Cumulative scores, player identities, and log are preserved.
+function startNextRound(state) {
+  state.round = (state.round || 1) + 1;
+  state.roundEnded = false;
+  state.roundScores = null;
+
+  let deck = shuffle(buildDeck());
+  while (deck[0] && deck[0].rank === RANK_JACK) {
+    const jack = deck.shift();
+    deck.push(jack);
+  }
+  state.table = deck.splice(0, state.rules.tableInitSize);
+  state.lastCapturer = null;
+
+  for (const id of state.playerOrder) {
+    const p = state.players[id];
+    p.hand = deck.splice(0, state.rules.cardsPerHand);
+    p.captures = [];
+    p.bastraCount = 0;
+    p.score = 0;
+  }
+  state.deck = deck;
+
+  // Rotate the opening seat so advantage moves around the table.
+  const turnIdx = state.playerOrder.indexOf(state.turn);
+  state.turn = state.playerOrder[(turnIdx + 1) % state.playerOrder.length];
+  state.turnNumber = 1;
+  state.log.push(`Round ${state.round} begins.`);
 }
 
 function applyCapture(next, playerId, card) {
@@ -199,19 +238,50 @@ function endRoundIfDone(next) {
     next.table = [];
   }
   scoreRound(next);
-  let winner = next.playerOrder[0];
+
+  // Accumulate into the running totals and snapshot this round's
+  // scores so the UI can show a round summary.
+  const roundScores = {};
   for (const id of next.playerOrder) {
-    if (next.players[id].score > next.players[winner].score) winner = id;
+    const p = next.players[id];
+    roundScores[id] = p.score;
+    p.cumulativeScore = (p.cumulativeScore || 0) + p.score;
   }
-  next.winner = winner;
+  next.roundScores = roundScores;
   next.roundEnded = true;
-  next.log.push(`🎉 ${next.players[winner].name} wins with ${next.players[winner].score} points!`);
+
+  // Target reached? End the match. Otherwise the UI will prompt for
+  // another round via the 'nextRound' action.
+  let leader = next.playerOrder[0];
+  for (const id of next.playerOrder) {
+    if (next.players[id].cumulativeScore > next.players[leader].cumulativeScore) leader = id;
+  }
+  const target = next.rules.targetScore ?? 101;
+  if (next.players[leader].cumulativeScore >= target) {
+    next.winner = leader;
+    next.log.push(`🎉 ${next.players[leader].name} wins the match at ${next.players[leader].cumulativeScore} points!`);
+  } else {
+    next.log.push(`Round ${next.round} complete.`);
+  }
 }
 
 export function applyAction(state, playerId, action) {
-  if (state.winner) return { ok: false, error: 'Round is over', state };
+  if (state.winner) return { ok: false, error: 'Match is over', state };
+  if (!action) return { ok: false, error: 'No action', state };
+
+  // Starting a new round bypasses the turn check — any seat can
+  // advance the match once scoring has been displayed.
+  if (action.type === 'nextRound') {
+    if (!state.roundEnded) return { ok: false, error: 'Round still in progress', state };
+    const next = structuredClone(state);
+    startNextRound(next);
+    next.version += 1;
+    return { ok: true, state: next };
+  }
+
+  if (state.roundEnded) return { ok: false, error: 'Round is over — start the next one first', state };
   if (playerId !== state.turn) return { ok: false, error: "Not your turn", state };
-  if (!action || action.type !== 'play') return { ok: false, error: 'Unknown action', state };
+  if (action.type !== 'play') return { ok: false, error: 'Unknown action', state };
 
   const next = structuredClone(state);
   const p = next.players[playerId];

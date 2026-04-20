@@ -250,10 +250,10 @@ export default function App() {
       names[id] = `CPU ${i + 1}`;
     }
     try {
-      // Use Skip-Bo's explicit practice rules when set, otherwise
-      // fall back to the descriptor's defaults for whichever game
-      // is active.
-      const rulesForGame = currentGame.id === 'skipbo' ? practiceRules : currentGame.defaultRules;
+      // Merge descriptor defaults with whatever the setup screen
+      // configured (practiceRules might carry shape from a different
+      // game, so defaults win for keys the current game expects).
+      const rulesForGame = { ...currentGame.defaultRules, ...practiceRules };
       const g = createGame(ids, names, rulesForGame);
       // Link the human seat to the current profile so recorded games
       // know which profile to credit. CPUs stay null.
@@ -495,6 +495,7 @@ export default function App() {
     const maxCpus = Math.min(currentGame.maxPlayers - 1, 3);
     const safeCpus = Math.max(1, Math.min(cpuCount, maxCpus));
     const playerCount = 1 + safeCpus;
+    const targetScore = practiceRules.targetScore ?? currentGame.defaultRules.targetScore ?? 101;
     return (
       <div className="app">
         <div className="lobby">
@@ -511,8 +512,17 @@ export default function App() {
               onChange={(v) => setCpuCount(v)}
             />
           </div>
-          <div className="card-panel" style={{ fontSize: 13, color: 'var(--muted)' }}>
-            First round only. Captures and Bastras score as per standard rules.
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Rules</div>
+            <PracticeRuleRow
+              label="Target score"
+              value={targetScore}
+              options={[[51, 51], [101, 101], [151, 151], [201, 201]]}
+              onChange={(v) => setPracticeRules((r) => ({ ...currentGame.defaultRules, ...r, targetScore: v }))}
+            />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              Multi-round. First to target wins the match.
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
             <button className="secondary" onClick={goHome} style={{ flex: 1 }}>Back</button>
