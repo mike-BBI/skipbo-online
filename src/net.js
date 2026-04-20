@@ -44,8 +44,15 @@ export async function createHost({ roomCode, hostName, hostProfileId, onLobby, o
   let botTimer = null;
 
   const broadcastLobby = () => {
-    onLobby?.(lobby);
-    for (const c of conns.values()) c.send({ type: 'lobby', lobby });
+    // Send a fresh shallow snapshot — the host's React setState compares
+    // by reference, so mutating `lobby` in place would be a no-op render.
+    const snap = {
+      ...lobby,
+      players: lobby.players.map((p) => ({ ...p })),
+      rules: { ...lobby.rules },
+    };
+    onLobby?.(snap);
+    for (const c of conns.values()) c.send({ type: 'lobby', lobby: snap });
   };
   const broadcastState = () => {
     onState?.(game);
