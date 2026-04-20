@@ -3,9 +3,21 @@ import { createHost, createClient, generateRoomCode } from './net.js';
 import { Stats } from './Stats.jsx';
 import { skipboGame } from './games/skipbo/index.js';
 
-// Currently only Skip-Bo. When more games are added this will switch
-// on a URL param or picker state.
-const currentGame = skipboGame;
+// Registry of available games keyed by the value that appears in
+// ?game=... URL params and in the game_type column of Supabase rows.
+const GAMES = {
+  skipbo: skipboGame,
+};
+
+// Resolve once at module load. The ?game= param survives reloads and
+// can be linked to directly; defaults to Skip-Bo.
+function resolveGame() {
+  if (typeof window === 'undefined') return skipboGame;
+  const param = new URLSearchParams(window.location.search).get('game');
+  return GAMES[param] || skipboGame;
+}
+
+const currentGame = resolveGame();
 const { Game, Lobby, createGame, applyAction, cpuPlan, requiredDecks, maxPlayers: MAX_PLAYERS } = currentGame;
 import { getProfile, recordGame, setProfile, selectProfile, clearProfile } from './stats.js';
 import {
