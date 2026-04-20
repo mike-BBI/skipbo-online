@@ -8,20 +8,45 @@ import { bastraGame } from './games/bastra/index.js';
 // the end-of-round reveal) surfaces the real exception instead of
 // leaving a blank screen — React eats the error silently otherwise.
 class GameErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { error: null }; }
+  constructor(props) { super(props); this.state = { error: null, info: null }; }
   static getDerivedStateFromError(error) { return { error }; }
   componentDidCatch(error, info) {
+    this.setState({ info });
     console.error('[GameErrorBoundary]', error, info?.componentStack);
   }
   render() {
     if (this.state.error) {
+      const err = this.state.error;
+      // Safari's error.stack omits the message line; explicit display.
+      const name = err?.name || 'Error';
+      const message = err?.message || String(err);
+      const stack = err?.stack || '';
+      const componentStack = this.state.info?.componentStack || '';
       return (
         <div style={{ padding: 24, maxWidth: 560, margin: '40px auto', color: '#fecaca' }}>
           <h2 style={{ marginTop: 0 }}>Game crashed</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 8 }}>
-            {String(this.state.error?.stack || this.state.error?.message || this.state.error)}
-          </pre>
-          <button onClick={() => { this.setState({ error: null }); this.props.onReset?.(); }}>Back to home</button>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: '#fee2e2' }}>
+            {name}: {message}
+          </div>
+          {componentStack && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, marginBottom: 4 }}>Component stack:</div>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 8 }}>
+                {componentStack.trim()}
+              </pre>
+            </>
+          )}
+          {stack && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, marginBottom: 4 }}>Stack:</div>
+              <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 8 }}>
+                {stack}
+              </pre>
+            </>
+          )}
+          <button onClick={() => { this.setState({ error: null, info: null }); this.props.onReset?.(); }} style={{ marginTop: 12 }}>
+            Back to home
+          </button>
         </div>
       );
     }
