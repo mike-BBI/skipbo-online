@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createHost, createClient, generateRoomCode } from './net.js';
-import { Lobby } from './Lobby.jsx';
-import { Game } from './Game.jsx';
+import { Lobby } from './games/skipbo/Lobby.jsx';
+import { Game } from './games/skipbo/Game.jsx';
 import { Stats } from './Stats.jsx';
-import { createGame, applyAction, requiredDecks, MAX_PLAYERS } from './engine.js';
-import { cpuPlan } from './bot.js';
+import { createGame, applyAction, requiredDecks, MAX_PLAYERS } from './games/skipbo/engine.js';
+import { cpuPlan } from './games/skipbo/bot.js';
 import { getProfile, recordGame, setProfile, selectProfile, clearProfile } from './stats.js';
 import {
   supabaseEnabled,

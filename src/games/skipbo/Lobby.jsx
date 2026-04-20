@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Chat } from './Chat.jsx';
+import { Chat } from '../../Chat.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS, requiredDecks } from './engine.js';
 
 export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, chatMessages, onSendChat, onLeave, error, peerStatus }) {

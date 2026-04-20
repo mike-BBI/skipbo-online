@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, EmptySlot, Stockpile, DiscardPile, Deck } from './Card.jsx';
-import { Chat } from './Chat.jsx';
+import { Chat } from '../../Chat.jsx';
 import { canPlayToBuild, SKIPBO } from './engine.js';
 
 // Build pile top: a wild card's "value" equals its position in the

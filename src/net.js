@@ -2,8 +2,8 @@
 // Host holds truth for lobby + game state, broadcasts to all clients.
 
 import { Peer } from 'peerjs';
-import { createGame, applyAction, MAX_PLAYERS, MIN_PLAYERS, resolveRules } from './engine.js';
-import { cpuPlan } from './bot.js';
+import { createGame, applyAction, MAX_PLAYERS, MIN_PLAYERS, resolveRules } from './games/skipbo/engine.js';
+import { cpuPlan } from './games/skipbo/bot.js';
 
 const ROOM_PREFIX = 'skipbo-room-v1-';
 export const hostPeerId = (room) => ROOM_PREFIX + room.toUpperCase() + '-host';
