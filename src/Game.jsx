@@ -357,7 +357,7 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
       )}
 
       <div className="build-area">
-        <div className="build-label">Build piles (1 → 12)</div>
+        <div className="build-label">Build piles</div>
         <div className="build-piles">
           <Deck count={state.deck.length} drawPulse={drawPulse} />
           {state.buildPiles.map((bp, i) => {
@@ -391,6 +391,7 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
               topCard={me.stock[me.stock.length - 1]}
               count={me.stock.length}
               selected={selection?.from === 'stock'}
+              label=""
             />
           </div>
         </div>
