@@ -81,6 +81,23 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     }
   }, [state.players, state.playerOrder]);
 
+  // Play-by-play for opponent moves. Every time the engine records a
+  // new lastMove that wasn't ours, surface a floating card showing
+  // what they played and what (if anything) they captured. Stays on
+  // screen long enough to track — the CPU pacing already leaves
+  // plenty of time before the next move.
+  const [moveEvent, setMoveEvent] = useState(null);
+  const lastMoveVersionRef = useRef(state.version);
+  useEffect(() => {
+    if (state.version === lastMoveVersionRef.current) return;
+    lastMoveVersionRef.current = state.version;
+    const lm = state.lastMove;
+    if (!lm || lm.playerId === myId) { setMoveEvent(null); return; }
+    setMoveEvent({ ...lm, key: `mv-${state.version}` });
+    const t = setTimeout(() => setMoveEvent(null), 2400);
+    return () => clearTimeout(t);
+  }, [state.version, state.lastMove, myId]);
+
   const selectedCard = selectedHandIdx != null ? me?.hand[selectedHandIdx] : null;
   const selectedRanks = selectedTable.map((i) => state.table[i]?.rank).filter((r) => r != null);
   const captureIsValid = selectedCard ? isValidCapture(selectedCard.rank, selectedRanks) : false;
@@ -134,6 +151,35 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             {bastraEvent.playerId === myId ? 'You swept the table!' : `${state.players[bastraEvent.playerId]?.name || 'Someone'} swept the table!`}
           </div>
           <div className="bastra-celebrate-bonus">+{state.rules.bastraPoints ?? 10}</div>
+        </div>
+      )}
+
+      {moveEvent && !bastraEvent && (
+        <div
+          key={moveEvent.key}
+          className="move-event"
+          style={{ '--player-hue': hueFor(moveEvent.playerId) }}
+        >
+          <div className="move-event-header">
+            {state.players[moveEvent.playerId]?.name || 'Opponent'} played
+          </div>
+          <div className="move-event-played">
+            <PlayingCard card={moveEvent.card} />
+          </div>
+          {moveEvent.capturedCards.length > 0 ? (
+            <>
+              <div className="move-event-arrow">captured</div>
+              <div className="move-event-captured">
+                {moveEvent.capturedCards.map((c, i) => (
+                  <PlayingCard key={i} card={c} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="move-event-arrow" style={{ color: 'var(--muted)' }}>
+              played to the table
+            </div>
+          )}
         </div>
       )}
 

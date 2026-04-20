@@ -6,19 +6,17 @@
   width: var(--card-w);
   height: var(--card-h);
   flex-shrink: 0;
-  background: #fafaf0;
-  border: 1px solid #e5e5d8;
+  background: linear-gradient(145deg, #ffffff 0%, #f3f1e4 100%);
+  border: 1px solid #d6d4c3;
   border-radius: var(--card-radius);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   cursor: pointer;
   user-select: none;
   font-family: "Lilita One", "Arial Black", sans-serif;
   color: #111827;
+  overflow: hidden;
 }
-.pc.red { color: #dc2626; }
+.pc.red { color: #c4173a; }
 .pc.black { color: #111827; }
 .pc.face-down {
   background: repeating-linear-gradient(45deg, #1d4ed8 0, #1d4ed8 8px, #0f172a 8px, #0f172a 16px);
@@ -31,21 +29,129 @@
 }
 .pc-corner {
   position: absolute;
-  font-size: 14px;
   line-height: 1;
-  font-weight: 400;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.pc-corner-rank {
+  font-size: 14px;
+  font-weight: 700;
+}
+.pc-corner-suit {
+  font-size: 11px;
+  line-height: 1;
 }
 .pc-tl { top: 4px; left: 5px; }
 .pc-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
-.pc-suit {
-  font-size: 30px;
+.pc-body {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.pc-pip {
+  position: absolute;
+  font-size: 16px;
+  line-height: 1;
+}
+.pc-center-pip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 44px;
+  line-height: 1;
+}
+.pc.is-face {
+  background:
+    linear-gradient(145deg, #ffffff 0%, #f3f1e4 100%),
+    linear-gradient(135deg, rgba(245, 179, 58, 0.08), transparent 60%);
+  background-blend-mode: normal, normal;
+}
+.pc-face {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.pc-face-letter {
+  font-family: "Chonburi", "Lilita One", serif;
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.pc-face-suit {
+  font-size: 18px;
   line-height: 1;
 }
 .pc.mini { width: 18px; height: 26px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-.pc.mini .pc-corner, .pc.mini .pc-suit { display: none; }
-.pc.playable:hover { transform: translateY(-4px); transition: transform 0.15s; }
+.pc.mini .pc-corner, .pc.mini .pc-body { display: none; }
+.pc.playable { transition: transform 0.12s; }
+.pc.playable:hover { transform: translateY(-4px); }
 .pc.disabled { opacity: 0.8; cursor: default; }
-.pc.selected { outline: 2px solid var(--gold); }
+
+/* Opponent move play-by-play. Floats above the board and sticks
+   around long enough to parse what just happened. */
+@keyframes move-event-in {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.94); }
+  15%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  85%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.98); }
+}
+.move-event {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: linear-gradient(180deg,
+    hsla(var(--player-hue, 48), 55%, 22%, 0.97),
+    hsla(var(--player-hue, 48), 50%, 14%, 0.97));
+  border: 2px solid hsl(var(--player-hue, 48), 80%, 60%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  color: #fff;
+  z-index: 80;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: move-event-in 2.4s ease-out forwards;
+  max-width: 88vw;
+}
+.move-event-header {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: hsl(var(--player-hue, 48), 100%, 82%);
+}
+.move-event-played { display: flex; justify-content: center; }
+.move-event-arrow {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: hsl(var(--player-hue, 48), 100%, 72%);
+}
+.move-event-captured {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 320px;
+}
+.move-event-played .pc,
+.move-event-captured .pc {
+  --card-w: 44px;
+  --card-h: 66px;
+}
 
 .bastra-table {
   display: flex;

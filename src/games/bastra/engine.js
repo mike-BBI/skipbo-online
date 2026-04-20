@@ -209,6 +209,7 @@ function applyCapture(next, playerId, card, tableIndices) {
     if (next.table.length === 0) {
       next.table.push(card);
       next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
+      next.lastMove = { playerId, card, capturedCards: [], bastra: false, placed: true };
       return { ok: true };
     }
     const swept = next.table.slice();
@@ -217,6 +218,7 @@ function applyCapture(next, playerId, card, tableIndices) {
     next.lastCapturer = playerId;
     next.table = [];
     next.log.push(`${p.name} played ${cardLabel(card)} → captured ${swept.length} (Bastra!).`);
+    next.lastMove = { playerId, card, capturedCards: swept, bastra: true, placed: false };
     return { ok: true };
   }
 
@@ -231,6 +233,7 @@ function applyCapture(next, playerId, card, tableIndices) {
   if (selected.length === 0) {
     next.table.push(card);
     next.log.push(`${p.name} played ${cardLabel(card)} to the table.`);
+    next.lastMove = { playerId, card, capturedCards: [], bastra: false, placed: true };
     return { ok: true };
   }
 
@@ -250,6 +253,7 @@ function applyCapture(next, playerId, card, tableIndices) {
   next.log.push(
     `${p.name} played ${cardLabel(card)} → captured ${selected.length} card${selected.length === 1 ? '' : 's'}${bastra ? ' (Bastra!)' : ''}.`,
   );
+  next.lastMove = { playerId, card, capturedCards: selected, bastra, placed: false };
   return { ok: true };
 }
 
