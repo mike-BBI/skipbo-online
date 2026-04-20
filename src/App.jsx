@@ -232,19 +232,19 @@ export default function App() {
 
   function openPracticeSetup() {
     setError(null);
-    // Skip-Bo has a custom practice-setup screen (stockpile size, hand
-    // size, CPU count). For games without one, jump straight in with
-    // the descriptor's default rules.
-    if (currentGame.id === 'skipbo') setPhase('practice-setup');
-    else startPractice();
+    setPhase('practice-setup');
   }
 
   function startPractice() {
     setError(null);
     const humanName = name.trim() || 'You';
+    // Respect the active game's player cap regardless of what state
+    // was carried over from another game's setup screen.
+    const maxCpus = Math.max(1, (currentGame.maxPlayers ?? 8) - 1);
+    const effectiveCpus = Math.max(1, Math.min(cpuCount, maxCpus));
     const ids = [HUMAN_ID];
     const names = { [HUMAN_ID]: humanName };
-    for (let i = 0; i < cpuCount; i++) {
+    for (let i = 0; i < effectiveCpus; i++) {
       const id = `cpu${i + 1}`;
       ids.push(id);
       names[id] = `CPU ${i + 1}`;
@@ -485,6 +485,40 @@ export default function App() {
           <div style={{ fontSize: 11, color: 'var(--muted)', maxWidth: 360 }}>
             Peer-to-peer via WebRTC. Host stays in this tab; if they close it the game ends.
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'practice-setup' && currentGame.id === 'bastra') {
+    const humanName = name.trim() || 'You';
+    const maxCpus = Math.min(currentGame.maxPlayers - 1, 3);
+    const safeCpus = Math.max(1, Math.min(cpuCount, maxCpus));
+    const playerCount = 1 + safeCpus;
+    return (
+      <div className="app">
+        <div className="lobby">
+          <h1 style={{ fontSize: 32 }}>Bastra vs CPU</h1>
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Players</div>
+            <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+              {humanName} + {safeCpus} CPU{safeCpus === 1 ? '' : 's'} ({playerCount} total)
+            </div>
+            <PracticeRuleRow
+              label="CPU opponents"
+              value={safeCpus}
+              options={Array.from({ length: maxCpus }, (_, i) => [i + 1, i + 1])}
+              onChange={(v) => setCpuCount(v)}
+            />
+          </div>
+          <div className="card-panel" style={{ fontSize: 13, color: 'var(--muted)' }}>
+            First round only. Captures and Bastras score as per standard rules.
+          </div>
+          <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
+            <button className="secondary" onClick={goHome} style={{ flex: 1 }}>Back</button>
+            <button onClick={startPractice} style={{ flex: 2 }}>Start game</button>
+          </div>
+          {error && <div className="error">{error}</div>}
         </div>
       </div>
     );
