@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { createHost, createClient, generateRoomCode } from './net.js';
 import { Stats } from './Stats.jsx';
 import { skipboGame } from './games/skipbo/index.js';
+import { bastraGame } from './games/bastra/index.js';
 
 // Registry of available games keyed by the value that appears in
 // ?game=... URL params and in the game_type column of Supabase rows.
 const GAMES = {
   skipbo: skipboGame,
+  bastra: bastraGame,
 };
 
 // Resolve once at module load. The ?game= param survives reloads and
@@ -230,7 +232,11 @@ export default function App() {
 
   function openPracticeSetup() {
     setError(null);
-    setPhase('practice-setup');
+    // Skip-Bo has a custom practice-setup screen (stockpile size, hand
+    // size, CPU count). For games without one, jump straight in with
+    // the descriptor's default rules.
+    if (currentGame.id === 'skipbo') setPhase('practice-setup');
+    else startPractice();
   }
 
   function startPractice() {
@@ -244,7 +250,11 @@ export default function App() {
       names[id] = `CPU ${i + 1}`;
     }
     try {
-      const g = createGame(ids, names, practiceRules);
+      // Use Skip-Bo's explicit practice rules when set, otherwise
+      // fall back to the descriptor's defaults for whichever game
+      // is active.
+      const rulesForGame = currentGame.id === 'skipbo' ? practiceRules : currentGame.defaultRules;
+      const g = createGame(ids, names, rulesForGame);
       // Link the human seat to the current profile so recorded games
       // know which profile to credit. CPUs stay null.
       if (g.players[HUMAN_ID]) g.players[HUMAN_ID].profileId = getProfile().id;
@@ -333,7 +343,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="lobby">
-          <h1>Mav Family Skip-Bo</h1>
+          <h1>Mav Family {currentGame.name}</h1>
 
           {needsProfile ? (
             <>

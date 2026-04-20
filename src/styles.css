@@ -1,5 +1,62 @@
 @import url('https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka+One&family=Bowlby+One+SC&family=Chonburi&display=swap');
 
+/* ───────── BASTRA PLAYING-CARD FACE ───────── */
+.pc {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  flex-shrink: 0;
+  background: #fafaf0;
+  border: 1px solid #e5e5d8;
+  border-radius: var(--card-radius);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  color: #111827;
+}
+.pc.red { color: #dc2626; }
+.pc.black { color: #111827; }
+.pc.face-down {
+  background: repeating-linear-gradient(45deg, #1d4ed8 0, #1d4ed8 8px, #0f172a 8px, #0f172a 16px);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.pc.empty {
+  background: transparent;
+  border: 2px dashed rgba(255,255,255,0.15);
+  box-shadow: none;
+}
+.pc-corner {
+  position: absolute;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 400;
+}
+.pc-tl { top: 4px; left: 5px; }
+.pc-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
+.pc-suit {
+  font-size: 30px;
+  line-height: 1;
+}
+.pc.mini { width: 18px; height: 26px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+.pc.mini .pc-corner, .pc.mini .pc-suit { display: none; }
+.pc.playable:hover { transform: translateY(-4px); transition: transform 0.15s; }
+.pc.disabled { opacity: 0.8; cursor: default; }
+.pc.selected { outline: 2px solid var(--gold); }
+
+.bastra-table {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  min-height: var(--card-h);
+  padding: 10px;
+}
+
+
 :root {
   --bg: #0b3d2e;           /* felt-green table */
   --bg-2: #0a2f23;
