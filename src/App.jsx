@@ -772,6 +772,11 @@ function CpuDifficultyList({ count, values, onChange }) {
 }
 
 function PracticeRuleRow({ label, value, detail, options, onChange }) {
+  // Options are [label, value] tuples. The <option> element must use
+  // the *value* (not the label) in its HTML value attribute so the
+  // controlled <select value={value}> has a matching option — otherwise
+  // the browser silently snaps back to the first option and the dropdown
+  // displays something different from what's actually in state.
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #2a5a48' }}>
       <div style={{ flex: 1 }}>
@@ -781,7 +786,7 @@ function PracticeRuleRow({ label, value, detail, options, onChange }) {
       <select
         value={String(value)}
         onChange={(e) => {
-          const opt = options.find(([lbl]) => String(lbl) === e.target.value);
+          const opt = options.find(([, v]) => String(v) === e.target.value);
           if (opt) onChange(opt[1]);
         }}
         style={{
@@ -793,8 +798,8 @@ function PracticeRuleRow({ label, value, detail, options, onChange }) {
           font: 'inherit',
         }}
       >
-        {options.map(([lbl]) => (
-          <option key={String(lbl)} value={String(lbl)}>{lbl}</option>
+        {options.map(([lbl, v]) => (
+          <option key={String(v)} value={String(v)}>{lbl}</option>
         ))}
       </select>
     </div>
