@@ -20,6 +20,15 @@ function BuildPileTop({ bp, onClick, className }) {
   );
 }
 
+// Curated, visually-distinct hue palette indexed by seat position in
+// turn order. Eight slots cover the max player count; the order is
+// hand-picked so neighboring seats never share a color family.
+const PLAYER_HUES = [210, 350, 45, 120, 280, 25, 175, 310];
+function playerHueByIndex(idx) {
+  if (idx < 0) return 153;
+  return PLAYER_HUES[idx % PLAYER_HUES.length];
+}
+
 // selection: { from: 'hand'|'stock'|'discard', index?: number }
 export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMessages, onSendChat, onLeave, error, hideChat }) {
   const [selection, setSelection] = useState(null);
@@ -65,6 +74,18 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
     }
     prevDeckRef.current = state.deck.length;
   }, [state.deck.length]);
+
+  // Flash a banner each time the turn changes so the next player is
+  // obviously signaled. Keyed so it remounts and re-animates on every
+  // hand-off.
+  const [turnAnnounceKey, setTurnAnnounceKey] = useState(0);
+  const lastTurnRef = useRef(state.turn);
+  useEffect(() => {
+    if (lastTurnRef.current !== state.turn) {
+      lastTurnRef.current = state.turn;
+      setTurnAnnounceKey((k) => k + 1);
+    }
+  }, [state.turn]);
 
   // Completed-pile animation: when a build pile transitions from
   // non-empty to empty, briefly render the top card (retrieved from
@@ -224,8 +245,20 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
   const yesCount = undoVote ? Object.values(undoVote.votes).filter((v) => v === true).length : 0;
   const noCount = undoVote ? Object.values(undoVote.votes).filter((v) => v === false).length : 0;
 
+  const activeHue = playerHueByIndex(state.playerOrder.indexOf(state.turn));
+  const activePlayerName = state.turn === myId ? 'Your' : `${state.players[state.turn]?.name || 'Player'}'s`;
+
   return (
     <div className="board">
+      {!state.winner && turnAnnounceKey > 0 && (
+        <div
+          key={turnAnnounceKey}
+          className="turn-announcement"
+          style={{ '--player-hue': activeHue }}
+        >
+          {activePlayerName} turn
+        </div>
+      )}
       {undoVote && (
         <div className="undo-banner">
           <div className="undo-banner-row">
@@ -274,10 +307,13 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
       </div>
 
       <div className="opponents">
-        {opponents.map((op) => (
+        {opponents.map((op) => {
+          const hue = playerHueByIndex(state.playerOrder.indexOf(op.id));
+          return (
           <div
             key={op.id}
             className={`opponent ${op.id === state.turn ? 'active' : ''}`}
+            style={{ '--player-hue': hue }}
             ref={op.id === state.turn ? (el) => el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }) : null}
           >
             <div className="opp-header">
@@ -296,7 +332,8 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {!state.winner && isMyTurn && (
