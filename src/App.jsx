@@ -404,6 +404,27 @@ export default function App() {
 
           {!needsProfile && (<>
 
+          <div className="card-panel">
+            <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Game</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.values(GAMES).map((g) => (
+                <button
+                  key={g.id}
+                  className={g.id === currentGame.id ? '' : 'secondary'}
+                  style={{ flex: 1, minWidth: 120 }}
+                  onClick={() => {
+                    if (g.id === currentGame.id) return;
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('game', g.id);
+                    window.location.href = url.toString();
+                  }}
+                >
+                  {g.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {supabaseEnabled && openRooms.length > 0 && (
             <div className="card-panel">
               <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Open rooms</div>
