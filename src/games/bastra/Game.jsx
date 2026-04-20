@@ -277,8 +277,12 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           // reconstruct the pre-move table (captured cards at their
           // original positions) and append the played card so the
           // user can watch the capture play out in place.
+          // Skip reconstruction once the round has ended — the engine
+          // sweeps any leftover table cards to the last capturer at
+          // round end, so state.table is shorter than the pre-capture
+          // shape the animation expects and we'd index past its end.
           const items = [];
-          if (animEvent && animEvent.capturedCards.length > 0) {
+          if (animEvent && animEvent.capturedCards.length > 0 && !state.roundEnded) {
             const positions = new Set(animEvent.capturedPositions);
             const capByPos = new Map();
             animEvent.capturedPositions.forEach((pos, k) => capByPos.set(pos, animEvent.capturedCards[k]));
