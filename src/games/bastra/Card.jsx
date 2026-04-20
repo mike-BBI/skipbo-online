@@ -19,21 +19,32 @@ const PIP_LAYOUTS = {
   7: [[32, 26], [68, 26], [50, 38], [32, 50], [68, 50], [32, 74], [68, 74]],
   8: [[32, 26], [68, 26], [50, 38], [32, 50], [68, 50], [50, 62], [32, 74], [68, 74]],
   9: [[32, 26], [68, 26], [32, 42], [68, 42], [50, 50], [32, 58], [68, 58], [32, 74], [68, 74]],
-  10: [[32, 26], [68, 26], [50, 34], [32, 42], [68, 42], [32, 58], [68, 58], [50, 66], [32, 74], [68, 74]],
+  // 10 uses the classic 2-1-2 / 2-1-2 arrangement so it doesn't look
+  // cramped like a compressed 8.
+  10: [[32, 22], [68, 22], [50, 33], [32, 44], [68, 44], [32, 56], [68, 56], [50, 67], [32, 78], [68, 78]],
 };
 
-function Pips({ rank, suit }) {
+// Unicode provides full-card glyphs for every standard deck card
+// (U+1F0A1..1F0DE). They render as complete face cards with the
+// traditional courtly illustrations on most modern systems — the
+// fastest route to a recognizable J/Q/K without custom SVG artwork.
+// Knight (U+xxAC) is skipped so Queen/King land on the right points.
+const SUIT_GLYPH_BASE = { S: 0x1F0A0, H: 0x1F0B0, D: 0x1F0C0, C: 0x1F0D0 };
+function faceGlyph(card) {
+  const base = SUIT_GLYPH_BASE[card.suit];
+  if (!base) return '';
+  let offset = card.rank;
+  if (card.rank >= 12) offset += 1; // skip Knight slot
+  return String.fromCodePoint(base + offset);
+}
+
+function Pips({ rank, suit, card }) {
   const sym = SUIT_SYMBOLS[suit];
   if (rank === 1) {
     return <span className="pc-center-pip">{sym}</span>;
   }
   if (rank === 11 || rank === 12 || rank === 13) {
-    return (
-      <span className="pc-face">
-        <span className="pc-face-letter">{RANK_LABELS[rank]}</span>
-        <span className="pc-face-suit">{sym}</span>
-      </span>
-    );
+    return <span className="pc-face-glyph">{faceGlyph(card)}</span>;
   }
   const layout = PIP_LAYOUTS[rank];
   if (!layout) return <span className="pc-center-pip">{sym}</span>;
@@ -84,7 +95,7 @@ export function PlayingCard({ card, faceDown, onClick, className = '', selected,
         <span className="pc-corner-suit">{sym}</span>
       </span>
       <span className="pc-body">
-        <Pips rank={card.rank} suit={card.suit} />
+        <Pips rank={card.rank} suit={card.suit} card={card} />
       </span>
       <span className="pc-corner pc-br">
         <span className="pc-corner-rank">{rank}</span>

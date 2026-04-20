@@ -75,25 +75,14 @@
     linear-gradient(135deg, rgba(245, 179, 58, 0.08), transparent 60%);
   background-blend-mode: normal, normal;
 }
-.pc-face {
+.pc-face-glyph {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-.pc-face-letter {
-  font-family: "Chonburi", "Lilita One", serif;
-  font-size: 36px;
+  font-size: calc(var(--card-h) * 1.18);
   line-height: 1;
-  letter-spacing: -1px;
-}
-.pc-face-suit {
-  font-size: 18px;
-  line-height: 1;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols", sans-serif;
 }
 .pc.mini { width: 18px; height: 26px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
 .pc.mini .pc-corner, .pc.mini .pc-body { display: none; }
@@ -164,6 +153,28 @@
   justify-content: center;
   min-height: var(--card-h);
   padding: 10px;
+}
+
+/* Bastra uses the whole vertical space (no stockpiles / build piles
+   eating room), so the table + hand cards can be bigger. */
+.board.bastra {
+  --card-w: 76px;
+  --card-h: 114px;
+  --card-radius: 8px;
+}
+.board.bastra .pc-corner-rank { font-size: 13px; }
+.board.bastra .pc-corner-suit { font-size: 11px; }
+.board.bastra .pc-pip { font-size: 13px; }
+.board.bastra .pc-center-pip { font-size: 48px; }
+@media (max-width: 600px) {
+  .board.bastra {
+    --card-w: 60px;
+    --card-h: 90px;
+  }
+  .board.bastra .pc-corner-rank { font-size: 11px; }
+  .board.bastra .pc-corner-suit { font-size: 9px; }
+  .board.bastra .pc-pip { font-size: 11px; }
+  .board.bastra .pc-center-pip { font-size: 42px; }
 }
 
 @keyframes bastra-celebrate {
