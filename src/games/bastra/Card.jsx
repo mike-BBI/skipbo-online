@@ -5,19 +5,21 @@ const RED_SUITS = new Set(['H', 'D']);
 const RANK_LABELS = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
 function rankText(rank) { return RANK_LABELS[rank] || String(rank); }
 
-// Approximate traditional playing-card pip layouts. Positions are
-// percentages relative to the card body; pips in the bottom half are
-// rotated 180° to match the visual grammar of real cards.
+// Traditional two-column pip layouts (percent of card body).
+// Columns at 32/68 keep a clean gutter; top and bottom rows sit
+// just above/below the corner indices; middle rows stagger for 7-10
+// the way a real card does. Bottom-half pips are rotated 180° in CSS
+// so orientation matches a physical deck.
 const PIP_LAYOUTS = {
-  2: [[50, 22], [50, 78]],
-  3: [[50, 22], [50, 50], [50, 78]],
-  4: [[28, 22], [72, 22], [28, 78], [72, 78]],
-  5: [[28, 22], [72, 22], [50, 50], [28, 78], [72, 78]],
-  6: [[28, 22], [72, 22], [28, 50], [72, 50], [28, 78], [72, 78]],
-  7: [[28, 22], [72, 22], [50, 36], [28, 50], [72, 50], [28, 78], [72, 78]],
-  8: [[28, 22], [72, 22], [50, 36], [28, 50], [72, 50], [50, 64], [28, 78], [72, 78]],
-  9: [[28, 22], [72, 22], [28, 40], [72, 40], [50, 50], [28, 60], [72, 60], [28, 78], [72, 78]],
-  10: [[28, 22], [72, 22], [50, 30], [28, 44], [72, 44], [28, 56], [72, 56], [50, 70], [28, 78], [72, 78]],
+  2: [[50, 26], [50, 74]],
+  3: [[50, 26], [50, 50], [50, 74]],
+  4: [[32, 26], [68, 26], [32, 74], [68, 74]],
+  5: [[32, 26], [68, 26], [50, 50], [32, 74], [68, 74]],
+  6: [[32, 26], [68, 26], [32, 50], [68, 50], [32, 74], [68, 74]],
+  7: [[32, 26], [68, 26], [50, 38], [32, 50], [68, 50], [32, 74], [68, 74]],
+  8: [[32, 26], [68, 26], [50, 38], [32, 50], [68, 50], [50, 62], [32, 74], [68, 74]],
+  9: [[32, 26], [68, 26], [32, 42], [68, 42], [50, 50], [32, 58], [68, 58], [32, 74], [68, 74]],
+  10: [[32, 26], [68, 26], [50, 34], [32, 42], [68, 42], [32, 58], [68, 58], [50, 66], [32, 74], [68, 74]],
 };
 
 function Pips({ rank, suit }) {
