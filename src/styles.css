@@ -285,6 +285,18 @@ select { width: auto; padding: 6px 8px; }
   align-items: center;
   gap: 4px;
 }
+@keyframes pile-complete {
+  0%   { transform: scale(0.9) translateY(-6px); opacity: 0; }
+  15%  { transform: scale(1) translateY(0); opacity: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+  40%  { transform: scale(1.15); box-shadow: 0 0 24px 6px rgba(251, 191, 36, 0.85); }
+  65%  { transform: scale(1.05); box-shadow: 0 0 14px 3px rgba(251, 191, 36, 0.55); }
+  100% { transform: scale(0.3) translateY(-70px); opacity: 0; }
+}
+.pile-complete {
+  animation: pile-complete 1.3s cubic-bezier(0.45, 0, 0.5, 1) forwards;
+  pointer-events: none;
+}
+
 .wild-value-wrap {
   position: relative;
   width: var(--card-w);

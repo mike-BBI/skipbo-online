@@ -66,6 +66,34 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
     prevDeckRef.current = state.deck.length;
   }, [state.deck.length]);
 
+  // Completed-pile animation: when a build pile transitions from
+  // non-empty to empty, briefly render the top card (retrieved from
+  // completedPiles) with a celebratory scale+glow+fly-off, so the
+  // completion is visible instead of vanishing instantly.
+  const [completingPiles, setCompletingPiles] = useState([]);
+  const prevBuildPilesRef = useRef(state.buildPiles);
+  useEffect(() => {
+    const prev = prevBuildPilesRef.current;
+    const toAnimate = [];
+    for (let i = 0; i < state.buildPiles.length; i++) {
+      if ((prev[i]?.length || 0) > 0 && state.buildPiles[i].length === 0) {
+        const topCard = state.completedPiles[state.completedPiles.length - 1];
+        toAnimate.push({ pileIdx: i, card: topCard, key: `${Date.now()}-${i}` });
+      }
+    }
+    if (toAnimate.length) {
+      setCompletingPiles((prev) => [...prev, ...toAnimate]);
+      const timers = toAnimate.map((a) =>
+        setTimeout(() => {
+          setCompletingPiles((cur) => cur.filter((x) => x.key !== a.key));
+        }, 1300)
+      );
+      prevBuildPilesRef.current = state.buildPiles;
+      return () => timers.forEach(clearTimeout);
+    }
+    prevBuildPilesRef.current = state.buildPiles;
+  }, [state.buildPiles, state.completedPiles]);
+
   // Bump a key each time the hand grows so the cards remount and the
   // staggered deal animation plays one card at a time.
   const [dealKey, setDealKey] = useState(0);
@@ -283,9 +311,12 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
             const next = bp.length + 1;
             const playable = effectiveSelectedCard != null && canPlayToBuild(effectiveSelectedCard, bp);
             const dragOver = drag?.active && drag.overTarget === `build:${i}`;
+            const completing = completingPiles.find((c) => c.pileIdx === i);
             return (
               <div key={i} className="build-pile" data-drop={`build:${i}`}>
-                {bp.length > 0
+                {completing ? (
+                  <Card key={completing.key} card={completing.card} className="pile-complete" />
+                ) : bp.length > 0
                   ? <BuildPileTop
                       bp={bp}
                       onClick={() => onBuildPile(i)}
