@@ -112,6 +112,10 @@ export function createGame(playerIds, names = {}, rulesIn = {}) {
     players,
     playerOrder: [...playerIds],
     turn: starterId,
+    // Starter is locked for the whole match — each new round begins
+    // with this same seat, so the random first-to-act advantage only
+    // lands once per match.
+    firstPlayer: starterId,
     deck,
     table,
     lastCapturer: null,
@@ -144,9 +148,10 @@ function startNextRound(state) {
   }
   state.deck = deck;
 
-  // Randomize the opening seat each round so no one gets the
-  // first-to-act advantage systematically.
-  state.turn = state.playerOrder[Math.floor(Math.random() * state.playerOrder.length)];
+  // Same seat leads every round within a match — the starter was
+  // chosen randomly at createGame and stays fixed until the match
+  // ends. Fall back to seat 0 if an older save is missing the field.
+  state.turn = state.firstPlayer || state.playerOrder[0];
   state.turnNumber = 1;
   state.log.push(`Round ${state.round} begins.`);
 }
