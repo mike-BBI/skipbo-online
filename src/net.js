@@ -15,10 +15,45 @@ export function generateRoomCode() {
   return s;
 }
 
+// ICE servers — STUN for basic NAT, plus public TURN relays so players
+// on symmetric NATs (corporate / carrier-grade / mobile) can still
+// connect. Without TURN, WebRTC fails for ~10–15% of network configs.
+const PEER_CONFIG = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+      },
+    ],
+  },
+};
+
 function openPeer(id) {
   return new Promise((resolve, reject) => {
-    const peer = id ? new Peer(id) : new Peer();
-    const onOpen = (pid) => { cleanup(); resolve({ peer, id: pid }); };
+    const peer = id ? new Peer(id, PEER_CONFIG) : new Peer(PEER_CONFIG);
+    const onOpen = (pid) => {
+      cleanup();
+      // If the peer disconnects from the signaling server later, try
+      // to reconnect so new joiners can still find the host.
+      peer.on('disconnected', () => {
+        try { peer.reconnect(); } catch {}
+      });
+      resolve({ peer, id: pid });
+    };
     const onError = (err) => { cleanup(); reject(err); };
     const cleanup = () => { peer.off('open', onOpen); peer.off('error', onError); };
     peer.on('open', onOpen);
