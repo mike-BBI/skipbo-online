@@ -20,27 +20,21 @@
   border: 2px dashed rgba(255,255,255,0.15);
   box-shadow: none;
 }
-/* Sprite-driven card face — the /public/cards.svg is a 13x4 grid
-   (rank across, suit down). background-size is expanded so each of
-   the 13 columns / 4 rows exactly equals the card's current dimensions.
-   The --card-col / --card-row custom props on the element pick which
-   cell is shown. */
+/* Card face is rendered by the <playing-card> custom element inside
+   .pc-svg. The custom element draws the card as an inline SVG; we
+   just stretch it to fill the wrapper. */
 .pc-svg {
-  background-image: url('/cards.svg');
-  background-repeat: no-repeat;
-  background-size: calc(var(--card-w) * 13) calc(var(--card-h) * 4);
-  background-position:
-    calc(var(--card-col, 0) * var(--card-w) * -1)
-    calc(var(--card-row, 0) * var(--card-h) * -1);
-  background-color: #fafaf0;
+  background: #fafaf0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+.pc-svg playing-card {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .pc.mini { width: 18px; height: 26px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-.pc.mini.pc-svg {
-  background-size: calc(18px * 13) calc(26px * 4);
-  background-position:
-    calc(var(--card-col, 0) * 18px * -1)
-    calc(var(--card-row, 0) * 26px * -1);
-}
 .pc.playable { transition: transform 0.12s; }
 .pc.playable:hover { transform: translateY(-4px); }
 .pc.disabled { opacity: 0.8; cursor: default; }
