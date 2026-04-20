@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Card, EmptySlot, Stockpile, DiscardPile, Deck } from './Card.jsx';
 import { Chat } from './Chat.jsx';
-import { canPlayToBuild } from './engine.js';
+import { canPlayToBuild, SKIPBO } from './engine.js';
+
+// Build pile top: a wild card's "value" equals its position in the
+// pile (pile length), so when a wild is on top we overlay a small
+// badge with that number. Works correctly no matter how many wilds
+// are stacked — the top-most wild always shows its effective value.
+function BuildPileTop({ bp, onClick, className }) {
+  const top = bp[bp.length - 1];
+  if (top !== SKIPBO) {
+    return <Card key={`bp-${bp.length}`} card={top} onClick={onClick} className={className} />;
+  }
+  return (
+    <div className="wild-value-wrap" onClick={onClick}>
+      <Card key={`bp-${bp.length}`} card={top} className={className} />
+      <span className="wild-value-badge">{bp.length}</span>
+    </div>
+  );
+}
 
 // selection: { from: 'hand'|'stock'|'discard', index?: number }
 export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave, error, hideChat }) {
@@ -211,15 +228,13 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             return (
               <div key={i} className="build-pile" data-drop={`build:${i}`}>
                 {bp.length > 0
-                  ? <Card
-                      key={`bp${i}-${bp.length}`}
-                      card={bp[bp.length - 1]}
+                  ? <BuildPileTop
+                      bp={bp}
                       onClick={() => onBuildPile(i)}
                       className={`fly-in ${playable ? 'target' : ''} ${dragOver ? 'drop-hover' : ''}`}
                     />
                   : <EmptySlot onClick={() => onBuildPile(i)} className={`${playable ? 'target' : ''} ${dragOver ? 'drop-hover' : ''}`} label={(selection || drag?.active) ? 'Play 1' : ''} />
                 }
-                <div className="next">{next <= 12 ? `Next: ${next}` : 'Done'}</div>
               </div>
             );
           })}

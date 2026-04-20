@@ -253,9 +253,32 @@ select { width: auto; padding: 6px 8px; }
   align-items: center;
   gap: 4px;
 }
-.build-pile .next {
-  font-size: 10px;
-  color: var(--muted);
+.wild-value-wrap {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+}
+.wild-value-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: 50%;
+  background: #fbbf24;
+  color: #1f2937;
+  border: 2px solid #1f2937;
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 
 /* My area */
@@ -831,7 +854,6 @@ select { width: auto; padding: 6px 8px; }
   .my-area { gap: 8px; }
   .my-stock-wrap { padding-right: 10px; }
   .build-label, .my-section-label { font-size: 10px; margin-bottom: 2px; }
-  .build-pile .next { font-size: 9px; }
   .top-bar { padding: 2px 4px; font-size: 12px; }
   .turn-banner { padding: 5px; font-size: 13px; }
 

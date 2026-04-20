@@ -3,9 +3,17 @@ import { createHost, createClient, generateRoomCode } from './net.js';
 import { Lobby } from './Lobby.jsx';
 import { Game } from './Game.jsx';
 import { Stats } from './Stats.jsx';
-import { createGame, applyAction, requiredDecks } from './engine.js';
+import { createGame, applyAction, requiredDecks, MAX_PLAYERS } from './engine.js';
 import { cpuPlan } from './bot.js';
 import { getProfile, recordGame, setProfile } from './stats.js';
+import {
+  supabaseEnabled,
+  createRoom,
+  updateRoom,
+  deleteRoom,
+  subscribeOpenRooms,
+  HEARTBEAT_MS,
+} from './rooms.js';
 
 const NAME_KEY = 'skipbo.name';
 const HUMAN_ID = 'human';
@@ -26,6 +34,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [myId, setMyId] = useState(null);
   const [peerStatus, setPeerStatus] = useState(null);
+  const [openRooms, setOpenRooms] = useState([]);
   const practiceStateRef = useRef(null);
   const cpuTimerRef = useRef(null);
   const recordedGameRef = useRef(false);
@@ -33,6 +42,31 @@ export default function App() {
   useEffect(() => {
     return () => { net?.destroy(); };
   }, [net]);
+
+  // Public room list: subscribe while idle on the home screen so players
+  // can click a live room instead of typing a code.
+  useEffect(() => {
+    if (phase !== 'home' || !supabaseEnabled) return;
+    const unsubscribe = subscribeOpenRooms(setOpenRooms);
+    return () => { unsubscribe(); setOpenRooms([]); };
+  }, [phase]);
+
+  // Host-side room advertisement: keep player_count/started fresh on
+  // every lobby change, and heartbeat so stale rooms drop off the list
+  // if the host closes the tab without cleanup.
+  useEffect(() => {
+    if (mode !== 'host' || !net || !lobbyState) return;
+    updateRoom(net.roomCode, {
+      player_count: lobbyState.players.length,
+      started: lobbyState.started,
+    });
+  }, [mode, net, lobbyState]);
+
+  useEffect(() => {
+    if (mode !== 'host' || !net) return;
+    const timer = setInterval(() => { updateRoom(net.roomCode, {}); }, HEARTBEAT_MS);
+    return () => clearInterval(timer);
+  }, [mode, net]);
 
   useEffect(() => {
     if (name) {
@@ -54,6 +88,7 @@ export default function App() {
   }, [gameState?.winner, myId]);
 
   const goHome = () => {
+    if (mode === 'host' && net?.roomCode) deleteRoom(net.roomCode);
     net?.destroy();
     if (cpuTimerRef.current) { clearTimeout(cpuTimerRef.current); cpuTimerRef.current = null; }
     practiceStateRef.current = null;
@@ -96,20 +131,22 @@ export default function App() {
       setMyId(h.hostId);
       setLobbyState(h.getLobby());
       setPhase('lobby');
+      createRoom({ code, hostName: name.trim(), maxPlayers: MAX_PLAYERS });
     } catch (err) {
       setError(err.message || String(err));
       setPhase('home');
     }
   }
 
-  async function join() {
+  async function join(codeArg) {
     setError(null);
+    const code = (codeArg || joinCode).toUpperCase();
     if (!name.trim()) { setError('Enter a name first.'); return; }
-    if (!/^[A-Z0-9]{4}$/i.test(joinCode)) { setError('Enter a 4-character room code.'); return; }
+    if (!/^[A-Z0-9]{4}$/.test(code)) { setError('Enter a 4-character room code.'); return; }
     setPhase('connecting');
     try {
       const c = await createClient({
-        roomCode: joinCode.toUpperCase(),
+        roomCode: code,
         name: name.trim(),
         profileId: getProfile().id,
         onLobby, onState, onChat,
@@ -233,6 +270,31 @@ export default function App() {
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} placeholder="Enter a name" />
           </div>
 
+          {supabaseEnabled && openRooms.length > 0 && (
+            <div className="card-panel">
+              <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Open rooms</div>
+              {openRooms.map((r) => {
+                const full = r.player_count >= r.max_players;
+                return (
+                  <button
+                    key={r.code}
+                    className="secondary"
+                    onClick={() => join(r.code)}
+                    disabled={phase === 'connecting' || full}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <strong>{r.host_name}</strong> · {r.code}
+                    </span>
+                    <span style={{ color: 'var(--muted)', fontSize: 13, flexShrink: 0 }}>
+                      {full ? 'full' : `${r.player_count}/${r.max_players}`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="card-panel">
             <button onClick={host} disabled={phase === 'connecting'}>
               {phase === 'connecting' && mode === null ? 'Creating room…' : 'Create a room'}
@@ -245,7 +307,7 @@ export default function App() {
               maxLength={4}
               style={{ textAlign: 'center', letterSpacing: 6, fontSize: 22, fontFamily: 'ui-monospace, monospace' }}
             />
-            <button className="secondary" onClick={join} disabled={phase === 'connecting'}>
+            <button className="secondary" onClick={() => join()} disabled={phase === 'connecting'}>
               {phase === 'connecting' ? 'Joining…' : 'Join room'}
             </button>
           </div>
