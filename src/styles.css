@@ -6,86 +6,41 @@
   width: var(--card-w);
   height: var(--card-h);
   flex-shrink: 0;
-  background: linear-gradient(145deg, #ffffff 0%, #f3f1e4 100%);
-  border: 1px solid #d6d4c3;
   border-radius: var(--card-radius);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
   cursor: pointer;
   user-select: none;
-  font-family: "Lilita One", "Arial Black", sans-serif;
-  color: #111827;
   overflow: hidden;
 }
-.pc.red { color: #c4173a; }
-.pc.black { color: #111827; }
 .pc.face-down {
   background: repeating-linear-gradient(45deg, #1d4ed8 0, #1d4ed8 8px, #0f172a 8px, #0f172a 16px);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 .pc.empty {
   background: transparent;
   border: 2px dashed rgba(255,255,255,0.15);
   box-shadow: none;
 }
-.pc-corner {
-  position: absolute;
-  line-height: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-}
-.pc-corner-rank {
-  font-size: 11px;
-  font-weight: 500;
-  font-family: "Arial", sans-serif;
-}
-.pc-corner-suit {
-  font-size: 9px;
-  line-height: 1;
-}
-.pc-tl { top: 4px; left: 5px; }
-.pc-br { bottom: 4px; right: 5px; transform: rotate(180deg); }
-.pc-body {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-.pc-pip {
-  position: absolute;
-  font-size: 11px;
-  line-height: 1;
-  font-family: "Arial", sans-serif;
-  font-weight: 400;
-}
-.pc-center-pip {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 40px;
-  line-height: 1;
-  font-family: "Arial", sans-serif;
-}
-.pc.is-face {
-  background:
-    linear-gradient(145deg, #ffffff 0%, #f3f1e4 100%),
-    linear-gradient(135deg, rgba(245, 179, 58, 0.08), transparent 60%);
-  background-blend-mode: normal, normal;
-}
-.pc-face-glyph {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: calc(var(--card-h) * 1.18);
-  line-height: 1;
-  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols", sans-serif;
+/* Sprite-driven card face — the /public/cards.svg is a 13x4 grid
+   (rank across, suit down). background-size is expanded so each of
+   the 13 columns / 4 rows exactly equals the card's current dimensions.
+   The --card-col / --card-row custom props on the element pick which
+   cell is shown. */
+.pc-svg {
+  background-image: url('/cards.svg');
+  background-repeat: no-repeat;
+  background-size: calc(var(--card-w) * 13) calc(var(--card-h) * 4);
+  background-position:
+    calc(var(--card-col, 0) * var(--card-w) * -1)
+    calc(var(--card-row, 0) * var(--card-h) * -1);
+  background-color: #fafaf0;
 }
 .pc.mini { width: 18px; height: 26px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); }
-.pc.mini .pc-corner, .pc.mini .pc-body { display: none; }
+.pc.mini.pc-svg {
+  background-size: calc(18px * 13) calc(26px * 4);
+  background-position:
+    calc(var(--card-col, 0) * 18px * -1)
+    calc(var(--card-row, 0) * 26px * -1);
+}
 .pc.playable { transition: transform 0.12s; }
 .pc.playable:hover { transform: translateY(-4px); }
 .pc.disabled { opacity: 0.8; cursor: default; }
