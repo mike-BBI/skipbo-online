@@ -63,20 +63,23 @@ export async function recordGameForProfile(profileId, record) {
     deck_count: record.deckCount ?? 1,
     rules: record.rules ?? null,
     players: record.players ?? null,
+    game_type: record.gameType || 'skipbo',
     started_at: record.startedAt ? new Date(record.startedAt).toISOString() : null,
     ended_at: record.endedAt ? new Date(record.endedAt).toISOString() : new Date().toISOString(),
   });
   if (error) console.warn('recordGameForProfile failed', error);
 }
 
-export async function fetchHistoryForProfile(profileId, limit = 50) {
+export async function fetchHistoryForProfile(profileId, { gameType, limit = 50 } = {}) {
   if (!supabase || !profileId) return [];
-  const { data, error } = await supabase
+  let q = supabase
     .from('game_records')
     .select('*')
     .eq('profile_id', profileId)
     .order('ended_at', { ascending: false })
     .limit(limit);
+  if (gameType) q = q.eq('game_type', gameType);
+  const { data, error } = await q;
   if (error) { console.warn('fetchHistoryForProfile failed', error); return []; }
   return data || [];
 }

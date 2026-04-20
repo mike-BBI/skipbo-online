@@ -23,7 +23,7 @@ function adaptCloudRecord(row) {
   };
 }
 
-export function Stats({ onBack }) {
+export function Stats({ onBack, gameType = 'skipbo', gameName = 'Skip-Bo' }) {
   const [profile, setProfileState] = useState(getProfile());
   const [history, setHistory] = useState(() => {
     // Start with localStorage so the UI has something to render while
@@ -38,13 +38,13 @@ export function Stats({ onBack }) {
   useEffect(() => {
     if (!supabaseEnabled || !profile?.id) return;
     let cancelled = false;
-    fetchHistoryForProfile(profile.id, 100).then((rows) => {
+    fetchHistoryForProfile(profile.id, { gameType, limit: 100 }).then((rows) => {
       if (cancelled) return;
       setHistory(rows.map(adaptCloudRecord));
       setLoadingCloud(false);
     });
     return () => { cancelled = true; };
-  }, [profile?.id]);
+  }, [profile?.id, gameType]);
 
   const saveProfile = () => {
     const cleanName = String(draft.name || '').slice(0, 20).trim();
@@ -64,7 +64,7 @@ export function Stats({ onBack }) {
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 620, margin: '0 auto', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: 24 }}>Stats</h2>
+        <h2 style={{ margin: 0, fontSize: 24 }}>{gameName} Stats</h2>
         <button className="secondary" onClick={onBack}>Back</button>
       </div>
 

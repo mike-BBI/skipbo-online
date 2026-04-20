@@ -16,7 +16,7 @@ const client = supabase;
 export const STALE_MS = 120_000;
 export const HEARTBEAT_MS = 30_000;
 
-export async function createRoom({ code, hostName, maxPlayers }) {
+export async function createRoom({ code, hostName, maxPlayers, gameType }) {
   if (!client) return;
   const { error } = await client.from('rooms').upsert({
     code,
@@ -24,6 +24,7 @@ export async function createRoom({ code, hostName, maxPlayers }) {
     player_count: 1,
     max_players: maxPlayers,
     started: false,
+    game_type: gameType || 'skipbo',
     updated_at: new Date().toISOString(),
   });
   if (error) console.warn('createRoom failed', error);
@@ -44,9 +45,10 @@ export async function deleteRoom(code) {
   if (error) console.warn('deleteRoom failed', error);
 }
 
-// Live list of open, non-stale rooms. Calls `onRooms` with an array
-// each time the filtered view changes. Returns a cleanup function.
-export function subscribeOpenRooms(onRooms) {
+// Live list of open, non-stale rooms for a given game. Calls `onRooms`
+// with an array each time the filtered view changes. Returns a
+// cleanup function.
+export function subscribeOpenRooms(onRooms, gameType = 'skipbo') {
   if (!client) {
     onRooms([]);
     return () => {};
@@ -56,6 +58,7 @@ export function subscribeOpenRooms(onRooms) {
   const emit = () => {
     const cutoff = Date.now() - STALE_MS;
     const list = [...rooms.values()]
+      .filter((r) => (r.game_type || 'skipbo') === gameType)
       .filter((r) => !r.started && new Date(r.updated_at).getTime() >= cutoff)
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
     onRooms(list);
@@ -65,9 +68,10 @@ export function subscribeOpenRooms(onRooms) {
   // server event.
   const sweepTimer = setInterval(emit, 15_000);
 
-  // Initial fetch.
+  // Initial fetch (filter by game_type at the DB level for efficiency
+  // as the table grows across games).
   (async () => {
-    const { data, error } = await client.from('rooms').select('*');
+    const { data, error } = await client.from('rooms').select('*').eq('game_type', gameType);
     if (error) { console.warn('fetch rooms failed', error); return; }
     for (const r of data || []) rooms.set(r.code, r);
     emit();

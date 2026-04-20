@@ -55,7 +55,7 @@ export function getHistory() {
 // Append a game outcome to local history. `state` is the final engine
 // state; `profileId` is this device's player's stable id (so we can
 // tell "did I win?" even if my display name changed).
-export function recordGame(state, profileId, humanGameId) {
+export function recordGame(state, profileId, humanGameId, gameType = 'skipbo') {
   const history = getHistory();
   const winnerHumanId = state.winner;
   const record = {
@@ -96,6 +96,7 @@ export function recordGame(state, profileId, humanGameId) {
     deckCount: record.deckCount,
     rules: record.rules,
     players: record.players,
+    gameType,
     startedAt: record.startedAt,
     endedAt: record.endedAt,
   });

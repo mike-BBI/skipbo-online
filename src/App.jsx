@@ -100,7 +100,7 @@ export default function App() {
   // can click a live room instead of typing a code.
   useEffect(() => {
     if (phase !== 'home' || !supabaseEnabled) return;
-    const unsubscribe = subscribeOpenRooms(setOpenRooms);
+    const unsubscribe = subscribeOpenRooms(setOpenRooms, currentGame.id);
     return () => { unsubscribe(); setOpenRooms([]); };
   }, [phase]);
 
@@ -134,7 +134,7 @@ export default function App() {
     recordedGameRef.current = true;
     try {
       const profile = getProfile();
-      recordGame(gameState, profile.id, myId);
+      recordGame(gameState, profile.id, myId, currentGame.id);
     } catch (err) {
       console.error('failed to record game', err);
     }
@@ -185,7 +185,7 @@ export default function App() {
       setMyId(h.hostId);
       setLobbyState(h.getLobby());
       setPhase('lobby');
-      createRoom({ code, hostName: name.trim(), maxPlayers: MAX_PLAYERS });
+      createRoom({ code, hostName: name.trim(), maxPlayers: MAX_PLAYERS, gameType: currentGame.id });
     } catch (err) {
       setError(err.message || String(err));
       setPhase('home');
@@ -311,7 +311,7 @@ export default function App() {
   if (phase === 'stats') {
     return (
       <div className="app">
-        <Stats onBack={() => setPhase('home')} />
+        <Stats onBack={() => setPhase('home')} gameType={currentGame.id} gameName={currentGame.name} />
       </div>
     );
   }
