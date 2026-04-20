@@ -377,6 +377,8 @@ select { width: auto; padding: 6px 8px; }
   --card-h: 78px;
   --card-radius: 5px;
 }
+.my-discards-wrap .sb-card .center { font-size: 26px; }
+.my-discards-wrap .sb-card .corner { font-size: 13px; }
 .discard-row {
   display: flex;
   gap: 10px;
@@ -949,6 +951,8 @@ select { width: auto; padding: 6px 8px; }
   .my-area { gap: 8px; }
   .my-stock-wrap { padding-right: 10px; }
   .my-discards-wrap { --card-w: 44px; --card-h: 66px; }
+  .my-discards-wrap .sb-card .center { font-size: 22px; }
+  .my-discards-wrap .sb-card .corner { font-size: 11px; }
   .build-label, .my-section-label { font-size: 10px; margin-bottom: 2px; }
   .top-bar { padding: 2px 4px; font-size: 12px; }
   .turn-banner { padding: 5px; font-size: 13px; }
