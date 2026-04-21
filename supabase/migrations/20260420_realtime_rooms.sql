@@ -25,6 +25,13 @@ alter table public.rooms
   add column if not exists state jsonb,
   add column if not exists version integer not null default 0;
 
+-- Supabase Realtime's postgres_changes stream needs the full row for
+-- UPDATEs (not just primary-key diffs), otherwise jsonb column changes
+-- can't be evaluated against the subscription filter and the channel
+-- fails shortly after SUBSCRIBED with CHANNEL_ERROR. REPLICA IDENTITY
+-- FULL makes WAL include the whole row on every change.
+alter table public.rooms replica identity full;
+
 -- Realtime needs to publish row changes on this table so subscribers
 -- see lobby/state updates in real time. Safe to run repeatedly.
 do $$
