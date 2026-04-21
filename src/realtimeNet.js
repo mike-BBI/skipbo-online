@@ -87,8 +87,15 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
 
   onStatus?.({ kind: 'open', peerId: myPlayerId });
 
-  const channel = supabase
-    .channel(`room:${roomCode}`, { config: { broadcast: { self: false } } })
+  // Two separate channels — one for Postgres row changes (the
+  // authoritative lobby+state sync), one for ephemeral broadcasts
+  // (chat). Combining them on one channel was consistently triggering
+  // CHANNEL_ERROR right after SUBSCRIBED in production even with the
+  // publication and REPLICA IDENTITY correct; splitting them works
+  // around whatever validator is choking. Channel name uses a dash
+  // instead of a colon since colons have semi-reserved meaning.
+  const dbChannel = supabase
+    .channel(`rooms-db-${roomCode}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}` },
@@ -101,23 +108,30 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
         applyRow(payload.new);
       },
     )
+    .subscribe((status, err) => {
+      // eslint-disable-next-line no-console
+      console.log('[realtime:db]', roomCode, 'status=', status, err || '');
+      if (status === 'SUBSCRIBED') onStatus?.({ kind: 'open', peerId: myPlayerId });
+      else if (status === 'CHANNEL_ERROR') {
+        onStatus?.({
+          kind: 'error',
+          type: 'channel',
+          message: err?.message || 'Realtime DB channel error',
+        });
+      }
+      else if (status === 'TIMED_OUT') onStatus?.({ kind: 'disconnected' });
+      else if (status === 'CLOSED') onStatus?.({ kind: 'closed' });
+    });
+
+  const broadcastChannel = supabase
+    .channel(`rooms-chat-${roomCode}`, { config: { broadcast: { self: false } } })
     .on('broadcast', { event: 'chat' }, (payload) => {
       if (destroyed) return;
       onChat?.(payload.payload);
     })
     .subscribe((status, err) => {
       // eslint-disable-next-line no-console
-      console.log('[realtime]', roomCode, 'status=', status, err || '');
-      if (status === 'SUBSCRIBED') onStatus?.({ kind: 'open', peerId: myPlayerId });
-      else if (status === 'CHANNEL_ERROR') {
-        onStatus?.({
-          kind: 'error',
-          type: 'channel',
-          message: err?.message || 'Realtime channel error (check rooms is in supabase_realtime publication)',
-        });
-      }
-      else if (status === 'TIMED_OUT') onStatus?.({ kind: 'disconnected' });
-      else if (status === 'CLOSED') onStatus?.({ kind: 'closed' });
+      console.log('[realtime:chat]', roomCode, 'status=', status, err || '');
     });
 
   // Push initial state through the callbacks so the UI renders the
@@ -225,14 +239,15 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
     const clean = String(text || '').slice(0, 500).trim();
     if (!clean) return;
     const msg = { from: myPlayerId, name: myName, text: clean, ts: Date.now() };
-    try { channel.send({ type: 'broadcast', event: 'chat', payload: msg }); } catch {}
+    try { broadcastChannel.send({ type: 'broadcast', event: 'chat', payload: msg }); } catch {}
     onChat?.(msg); // self-echo so the sender sees their message immediately
   }
 
   function destroy() {
     destroyed = true;
     if (botTimer) { clearTimeout(botTimer); botTimer = null; }
-    try { supabase.removeChannel(channel); } catch {}
+    try { supabase.removeChannel(dbChannel); } catch {}
+    try { supabase.removeChannel(broadcastChannel); } catch {}
   }
 
   return {
