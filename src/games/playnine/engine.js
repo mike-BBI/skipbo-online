@@ -68,7 +68,6 @@ export function shuffle(arr) {
 }
 
 export function cardLabel(card) {
-  if (card === HOLE_IN_ONE) return 'H1O';
   return String(card);
 }
 

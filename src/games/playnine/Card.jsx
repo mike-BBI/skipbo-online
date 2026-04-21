@@ -41,7 +41,7 @@ export function Card({
   if (animationClass) classes.push(animationClass);
   if (className) classes.push(className);
 
-  const label = card === HOLE_IN_ONE ? 'H1O' : (card == null ? '' : String(card));
+  const label = card == null ? '' : String(card);
 
   return (
     <div
