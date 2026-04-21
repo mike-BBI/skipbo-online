@@ -1,12 +1,47 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, EmptySlot } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { COLUMNS, GRID_SIZE, faceDownCount, scoreBreakdown } from './engine.js';
 
 // Row-major index layout: 0..3 top, 4..7 bottom. Column i = [i, i+4].
 const GRID_ORDER = [0, 1, 2, 3, 4, 5, 6, 7];
+const FLIP_ANIM_MS = 460;
+
+// Track which slots in a player's grid just transitioned from
+// face-down to face-up so we can stamp the flip animation class for
+// exactly one render cycle (~FLIP_ANIM_MS).
+function useFlipTracker(player) {
+  const prevRef = useRef(null);
+  const [pulsing, setPulsing] = useState(() => new Set());
+  useEffect(() => {
+    if (!player) { prevRef.current = null; return; }
+    const prev = prevRef.current;
+    prevRef.current = player.flipped.slice();
+    if (!prev) return; // first render — no "transition" to detect
+    const newlyFlipped = [];
+    for (let i = 0; i < GRID_SIZE; i += 1) {
+      if (!prev[i] && player.flipped[i]) newlyFlipped.push(i);
+    }
+    if (newlyFlipped.length === 0) return;
+    setPulsing((cur) => {
+      const next = new Set(cur);
+      for (const i of newlyFlipped) next.add(i);
+      return next;
+    });
+    const timer = setTimeout(() => {
+      setPulsing((cur) => {
+        const next = new Set(cur);
+        for (const i of newlyFlipped) next.delete(i);
+        return next;
+      });
+    }, FLIP_ANIM_MS);
+    return () => clearTimeout(timer);
+  }, [player, player?.flipped?.join(',')]);
+  return pulsing;
+}
 
 function PlayerGrid({ player, highlightSlots = [], onSlotClick, revealAll = false }) {
+  const flipping = useFlipTracker(player);
   return (
     <div className="p9-grid">
       {GRID_ORDER.map((i) => {
@@ -19,11 +54,44 @@ function PlayerGrid({ player, highlightSlots = [], onSlotClick, revealAll = fals
             faceDown={!isFaceUp}
             onClick={onClick}
             selected={highlightSlots.includes(i)}
+            animationClass={flipping.has(i) ? 'flipping-in' : ''}
           />
         );
       })}
     </div>
   );
+}
+
+// Brief animation on the deck when a card has just been drawn off it.
+function useDrawPulse(deckLen) {
+  const prev = useRef(deckLen);
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    if (deckLen != null && prev.current != null && deckLen < prev.current) {
+      setPulse(true);
+      const t = setTimeout(() => setPulse(false), 420);
+      prev.current = deckLen;
+      return () => clearTimeout(t);
+    }
+    prev.current = deckLen;
+  }, [deckLen]);
+  return pulse;
+}
+
+// Brief animation on the discard when its top changes (new card landed).
+function useDiscardPop(top) {
+  const prev = useRef(top);
+  const [pop, setPop] = useState(false);
+  useEffect(() => {
+    if (top !== undefined && prev.current !== top) {
+      setPop(true);
+      const t = setTimeout(() => setPop(false), 360);
+      prev.current = top;
+      return () => clearTimeout(t);
+    }
+    prev.current = top;
+  }, [top]);
+  return pop;
 }
 
 export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave, error, hideChat }) {
@@ -34,18 +102,15 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const isMyTurn = state.turn === myId && !state.holeEnded && !state.winner;
   const isTeeOff = state.phase === 'teeOff';
 
-  // "Discard-and-flip" is a two-click action in the UI: tap the
-  // [Discard it] button (enters `flipping` mode), then tap a face-down
-  // card. Track that local mode.
   const [flipMode, setFlipMode] = useState(false);
-
-  // Reset flip mode when state changes such that it no longer applies
-  // (not your turn, no drawn card, etc.).
   useMemo(() => {
     if (!isMyTurn || !me?.drawn) setFlipMode(false);
   }, [isMyTurn, me?.drawn]);
 
   const [showChat, setShowChat] = useState(false);
+  const drawPulse = useDrawPulse(state.deck?.length);
+  const discardTop = state.discard[state.discard.length - 1];
+  const discardPop = useDiscardPop(discardTop);
 
   const handleSlotClick = (slot) => {
     if (!isMyTurn) return;
@@ -54,10 +119,8 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
       onAction({ type: 'teeOffFlip', slot });
       return;
     }
-    // Play phase
     if (me.drawn == null) return;
     if (flipMode) {
-      // Must be a face-down slot.
       if (me.flipped[slot]) return;
       onAction({ type: 'discardAndFlip', slot });
       setFlipMode(false);
@@ -72,7 +135,6 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const enterFlipMode = () => me?.drawn != null && me.drawnSource === 'deck' && setFlipMode(true);
   const cancelFlipMode = () => setFlipMode(false);
 
-  const discardTop = state.discard[state.discard.length - 1];
   const fdLeft = me ? faceDownCount(me) : 0;
 
   let prompt = '';
@@ -135,6 +197,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             card={null}
             faceDown
             onClick={isMyTurn && !isTeeOff && !me.drawn ? onDrawDeck : undefined}
+            animationClass={drawPulse ? 'draw-pulse' : ''}
           />
         </div>
         <div className="p9-drawn">
@@ -150,6 +213,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             ? <Card
                 card={discardTop}
                 onClick={isMyTurn && !isTeeOff && !me.drawn ? onDrawDiscard : undefined}
+                animationClass={discardPop ? 'discard-pop' : ''}
               />
             : <EmptySlot />
           }
@@ -202,10 +266,26 @@ function labelFor(v) {
   return String(v);
 }
 
+// Staggered end-of-hole reveal. Each player's row sequences:
+//   1) cards flip face-up with ~80ms stagger
+//   2) cancelled cards get their strike-through
+//   3) bonus chips pop in with their pts, running total bumps
+// After the final row finishes, action buttons appear.
 function RoundReveal({ state, myId, onNext, onLeave }) {
   const isMatchEnd = !!state.winner;
   const players = state.playerOrder.map((id) => state.players[id]);
   const breakdowns = players.map((p) => ({ p, bd: scoreBreakdown(p.grid) }));
+
+  // Gate action buttons until the cascade finishes.
+  const [actionsReady, setActionsReady] = useState(false);
+  const [skipped, setSkipped] = useState(false);
+  useEffect(() => {
+    if (skipped) { setActionsReady(true); return; }
+    const perRow = GRID_SIZE * 80 + 1000; // 8 cards × 80ms + bonus time
+    const total = breakdowns.length * perRow + 500;
+    const t = setTimeout(() => setActionsReady(true), total);
+    return () => clearTimeout(t);
+  }, [skipped, breakdowns.length]);
 
   return (
     <div className="p9-reveal-overlay">
@@ -214,40 +294,91 @@ function RoundReveal({ state, myId, onNext, onLeave }) {
           ? (state.winner === myId ? '🏆 You won the match!' : `${state.players[state.winner].name} wins the match`)
           : `Hole ${state.hole} complete`}
       </div>
-      {breakdowns.map(({ p, bd }) => (
-        <div key={p.id} className="p9-reveal-row">
-          <div className="p9-reveal-row-header">
-            <span className="p9-reveal-row-name">{p.name}{p.id === myId ? ' (you)' : ''}</span>
-            <span className="p9-reveal-row-score">
-              +{bd.total}
-              <span className="p9-reveal-row-total">total {p.cumulativeScore}</span>
-            </span>
-          </div>
-          <div className="p9-grid" style={{ justifyContent: 'flex-start' }}>
-            {GRID_ORDER.map((i) => (
-              <Card
-                key={i}
-                card={bd.cards[i].value}
-                matched={bd.cards[i].matched}
-                cancelled={bd.cards[i].cancelled}
-              />
-            ))}
-          </div>
-          {bd.bonuses.length > 0 && (
-            <div className="p9-reveal-bonuses">
-              {bd.bonuses.map((b, i) => (
-                <span key={i} className="p9-reveal-chip">{b.label} {b.pts}</span>
-              ))}
-            </div>
-          )}
-        </div>
+      {breakdowns.map(({ p, bd }, rowIdx) => (
+        <RevealRow
+          key={p.id}
+          player={p}
+          bd={bd}
+          isMe={p.id === myId}
+          rowIdx={rowIdx}
+          skipped={skipped}
+        />
       ))}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10 }}>
-        {isMatchEnd
+        {!skipped && !actionsReady && (
+          <button className="secondary" onClick={() => setSkipped(true)}>Skip</button>
+        )}
+        {actionsReady && (isMatchEnd
           ? <button onClick={onLeave}>Back to lobby</button>
           : <button onClick={onNext}>Next hole</button>
-        }
+        )}
       </div>
+    </div>
+  );
+}
+
+function RevealRow({ player, bd, isMe, rowIdx, skipped }) {
+  // Phase 0: cards revealing. Phase 1: chips popping. Phase 2: done.
+  const startDelay = skipped ? 0 : rowIdx * (GRID_SIZE * 80 + 1000);
+  const [chipIndex, setChipIndex] = useState(skipped ? bd.bonuses.length : 0);
+  const [runningScore, setRunningScore] = useState(() => {
+    if (skipped) return bd.total;
+    let sum = 0;
+    for (let i = 0; i < GRID_SIZE; i += 1) if (!bd.cards[i].matched) sum += bd.cards[i].value;
+    // H1O-matched cards still contribute face value even without bonus.
+    for (let i = 0; i < GRID_SIZE; i += 1) if (bd.cards[i].matched && !bd.cards[i].cancelled) sum += bd.cards[i].value;
+    return sum;
+  });
+  const [bumpKey, setBumpKey] = useState(0);
+
+  useEffect(() => {
+    if (skipped) { setChipIndex(bd.bonuses.length); setRunningScore(bd.total); return; }
+    const timers = [];
+    // Start chips after all cards have flipped.
+    const cardsDoneAt = startDelay + GRID_SIZE * 80 + 250;
+    bd.bonuses.forEach((b, i) => {
+      timers.push(setTimeout(() => {
+        setChipIndex(i + 1);
+        setRunningScore((s) => s + b.pts);
+        setBumpKey((k) => k + 1);
+      }, cardsDoneAt + i * 360));
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [skipped, startDelay, bd.bonuses.length, bd.total]);
+
+  return (
+    <div className="p9-reveal-row">
+      <div className="p9-reveal-row-header">
+        <span className="p9-reveal-row-name">{player.name}{isMe ? ' (you)' : ''}</span>
+        <span className="p9-reveal-row-score">
+          <span key={bumpKey} className={`p9-reveal-total-val ${bumpKey > 0 ? 'bump' : ''}`}>
+            {runningScore >= 0 ? '+' : ''}{runningScore}
+          </span>
+          <span className="p9-reveal-row-total">total {player.cumulativeScore}</span>
+        </span>
+      </div>
+      <div className="p9-grid" style={{ justifyContent: 'flex-start' }}>
+        {GRID_ORDER.map((i) => {
+          const c = bd.cards[i];
+          return (
+            <Card
+              key={i}
+              card={c.value}
+              matched={c.matched}
+              cancelled={c.cancelled}
+              animationClass={skipped ? '' : 'reveal-cascade'}
+              style={skipped ? undefined : { '--cascade-delay': `${startDelay + i * 80}ms` }}
+            />
+          );
+        })}
+      </div>
+      {bd.bonuses.length > 0 && chipIndex > 0 && (
+        <div className="p9-reveal-bonuses">
+          {bd.bonuses.slice(0, chipIndex).map((b, i) => (
+            <span key={i} className="p9-reveal-chip">{b.label} {b.pts >= 0 ? '+' : ''}{b.pts}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -27,6 +27,7 @@ export function Card({
   selected,
   matched,
   cancelled,
+  animationClass,
   className = '',
   style,
 }) {
@@ -37,6 +38,7 @@ export function Card({
   if (matched) classes.push('matched');
   if (cancelled) classes.push('cancelled');
   if (onClick) classes.push('clickable');
+  if (animationClass) classes.push(animationClass);
   if (className) classes.push(className);
 
   const label = card === HOLE_IN_ONE ? 'H1O' : (card == null ? '' : String(card));

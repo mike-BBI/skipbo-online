@@ -2164,6 +2164,78 @@ select { width: auto; padding: 6px 8px; }
   font-size: 10px;
 }
 
+/* Card flip in: face-down → face-up. Pseudo-flip via scaleX + subtle
+   Y rotation — cheaper than a true two-sided 3D flip and reads as a
+   "reveal" at the 4-card-per-row scale. */
+.p9-card.flipping-in {
+  animation: p9-flip-in 460ms ease-out;
+  transform-origin: center;
+}
+@keyframes p9-flip-in {
+  0%   { transform: perspective(400px) scaleX(-0.05) rotateY(110deg); opacity: 0.2; }
+  40%  { transform: perspective(400px) scaleX(0.5) rotateY(45deg); opacity: 0.75; }
+  100% { transform: perspective(400px) scaleX(1) rotateY(0deg); opacity: 1; }
+}
+
+/* Pulse on the deck when a card is drawn off it. */
+.p9-card.draw-pulse {
+  animation: p9-draw-pulse 420ms ease;
+}
+@keyframes p9-draw-pulse {
+  0%   { transform: scale(1); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+  50%  { transform: scale(1.08); box-shadow: 0 0 16px rgba(245, 158, 11, 0.55); }
+  100% { transform: scale(1); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+}
+
+/* Discard pop when a card lands on it (after replace / discardAndFlip
+   / skip). */
+.p9-card.discard-pop {
+  animation: p9-discard-pop 360ms ease;
+}
+@keyframes p9-discard-pop {
+  0%   { transform: translateY(-6px) scale(0.95); opacity: 0.6; }
+  60%  { transform: translateY(1px) scale(1.05); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Cascade stagger at end of a hole: cards fade in face-up with a
+   slight rise. Used by the round reveal. */
+.p9-card.reveal-cascade {
+  animation: p9-reveal-cascade 400ms ease-out backwards;
+  animation-delay: var(--cascade-delay, 0ms);
+}
+@keyframes p9-reveal-cascade {
+  0%   { transform: translateY(8px) rotateY(75deg); opacity: 0; }
+  100% { transform: translateY(0) rotateY(0); opacity: 1; }
+}
+
+/* Strike-through on cancelled cards fades in a beat after reveal. */
+.p9-card.cancelled .p9-card-center,
+.p9-card.cancelled .p9-card-corner {
+  transition: text-decoration 200ms, opacity 200ms;
+}
+.p9-reveal-chip { animation: p9-chip-pop 260ms ease-out; }
+@keyframes p9-chip-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.p9-reveal-total-val {
+  display: inline-block;
+  font-weight: 700;
+  transition: color 200ms, transform 200ms;
+}
+.p9-reveal-total-val.bump {
+  animation: p9-total-bump 300ms ease-out;
+  color: var(--gold, #f59e0b);
+}
+@keyframes p9-total-bump {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
 .p9-drawn {
   display: flex;
   flex-direction: column;
