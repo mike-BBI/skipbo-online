@@ -1,5 +1,5 @@
 import { Component, useEffect, useRef, useState } from 'react';
-import { createHost, createClient, generateRoomCode } from './net.js';
+import { createHost, createClient, generateRoomCode } from './realtimeNet.js';
 import { Stats } from './Stats.jsx';
 import { skipboGame } from './games/skipbo/index.js';
 import { bastraGame } from './games/bastra/index.js';
@@ -272,7 +272,6 @@ export default function App() {
       setMyId(h.hostId);
       setLobbyState(h.getLobby());
       setPhase('lobby');
-      createRoom({ code, hostName: name.trim(), maxPlayers: MAX_PLAYERS, gameType: currentGame.id });
       writeRoomToUrl(code);
     } catch (err) {
       setError(err.message || String(err));
@@ -319,6 +318,7 @@ export default function App() {
     setPhase('connecting');
     try {
       const c = await createClient({
+        game: currentGame,
         roomCode: code,
         name: name.trim(),
         profileId: getProfile().id,
@@ -329,6 +329,7 @@ export default function App() {
       });
       setNet(c);
       setMode('client');
+      setMyId(c.myPlayerId);
       writeRoomToUrl(code);
     } catch (err) {
       setError(err.message || String(err));
@@ -414,8 +415,8 @@ export default function App() {
     }, delay);
   }
 
-  const onStart = () => {
-    const res = net?.startGame?.();
+  const onStart = async () => {
+    const res = await net?.startGame?.();
     if (res && !res.ok) setError(res.error);
   };
   const onUpdateRules = (rules) => net?.updateRules?.(rules);
@@ -425,7 +426,7 @@ export default function App() {
     else net?.sendRename?.(newName);
   };
   const onSendChat = (text) => net?.sendChat?.(text);
-  const onAction = (action) => {
+  const onAction = async (action) => {
     if (mode === 'practice') {
       const s = practiceStateRef.current;
       if (!s) return;
@@ -437,12 +438,13 @@ export default function App() {
       if (res.state.turn !== HUMAN_ID && !res.state.winner) scheduleCpuTurn(res.state);
       return;
     }
-    if (mode === 'host') {
-      const res = net.submitAction(action);
-      if (!res.ok) setError(res.error);
-    } else {
-      net.sendAction(action);
-    }
+    // Realtime rooms: all players submit their own actions directly.
+    // The authoritative write + version check happens inside submitAction;
+    // stale-state conflicts surface as {ok:false, error:'stale-state'} and
+    // the subscription will push the correct state shortly, so we drop
+    // the error silently rather than flashing an alarming banner.
+    const res = await net?.submitAction?.(action);
+    if (res && !res.ok && res.error !== 'stale-state') setError(res.error);
   };
 
   if (phase === 'stats') {
