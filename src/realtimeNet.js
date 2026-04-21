@@ -80,10 +80,25 @@ async function updateRoomAtomic(code, patch, expectedVersion) {
 // Shared setup for both creator and joiner — subscribes to the room
 // row + broadcast channel, exposes submit helpers. `initialRow` is the
 // freshly-fetched-or-upserted row state.
+//
+// Transport strategy
+// ------------------
+// Polling the rooms row is the authoritative sync path: Supabase's
+// Realtime postgres_changes subscription turned out to be flaky in
+// this project (CHANNEL_ERROR after SUBSCRIBED even with publication
+// + REPLICA IDENTITY FULL + anon grants all configured correctly,
+// likely something in the access_token refresh pipeline with the new
+// publishable-key format). A 2-3s poll is plenty for turn-based card
+// games and sidesteps the issue entirely. Realtime is still attached
+// as a best-effort optimization — if it works, state arrives faster;
+// if it doesn't, polling covers us.
 function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRow, onLobby, onState, onChat, onStatus }) {
   let currentRow = initialRow;
   let destroyed = false;
   let botTimer = null;
+  let pollTimer = null;
+
+  const POLL_INTERVAL_MS = 2200;
 
   onStatus?.({ kind: 'open', peerId: myPlayerId });
 
@@ -111,16 +126,10 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
     .subscribe((status, err) => {
       // eslint-disable-next-line no-console
       console.log('[realtime:db]', roomCode, 'status=', status, err || '');
+      // Polling is the authoritative sync path, so Realtime failures
+      // don't need to be shown as errors — they just mean state arrives
+      // every 2s instead of instantly. Log for diagnostics and move on.
       if (status === 'SUBSCRIBED') onStatus?.({ kind: 'open', peerId: myPlayerId });
-      else if (status === 'CHANNEL_ERROR') {
-        onStatus?.({
-          kind: 'error',
-          type: 'channel',
-          message: err?.message || 'Realtime DB channel error',
-        });
-      }
-      else if (status === 'TIMED_OUT') onStatus?.({ kind: 'disconnected' });
-      else if (status === 'CLOSED') onStatus?.({ kind: 'closed' });
     });
 
   const broadcastChannel = supabase
@@ -139,11 +148,41 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
   if (currentRow) applyRow(currentRow);
 
   function applyRow(row) {
+    // Skip no-op events to avoid needless re-renders. version is the
+    // cheapest signal for "anything happened"; updated_at catches lobby
+    // mutations (which don't bump version).
+    if (currentRow
+      && currentRow.version === row.version
+      && currentRow.updated_at === row.updated_at) {
+      return;
+    }
     currentRow = row;
     if (row.lobby) onLobby?.(row.lobby);
     if (row.state) onState?.(row.state);
     scheduleBotIfNeeded();
   }
+
+  // Poll the room row as the primary sync mechanism. Realtime would be
+  // ideal but has been flaky in practice; a 2.2s poll reliably delivers
+  // lobby + state changes within game-appropriate latency without
+  // depending on WebSocket lifecycle quirks.
+  function schedulePoll() {
+    if (destroyed) return;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    pollTimer = setTimeout(async () => {
+      pollTimer = null;
+      if (destroyed) return;
+      try {
+        const row = await fetchRoom(roomCode);
+        if (row) applyRow(row);
+      } catch {
+        // Network blip — keep polling; if persistent the user sees
+        // staleness but the app doesn't hard-error.
+      }
+      schedulePoll();
+    }, POLL_INTERVAL_MS);
+  }
+  schedulePoll();
 
   async function refetch() {
     try {
@@ -246,6 +285,7 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
   function destroy() {
     destroyed = true;
     if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     try { supabase.removeChannel(dbChannel); } catch {}
     try { supabase.removeChannel(broadcastChannel); } catch {}
   }
