@@ -1992,3 +1992,233 @@ select { width: auto; padding: 6px 8px; }
   /* Log takes less room on small screens */
   .log { max-height: 60px; font-size: 11px; }
 }
+
+/* ───────── PLAY NINE ───────── */
+.board.playnine {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  font-family: system-ui, sans-serif;
+}
+.p9-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.p9-top-bar .p9-hole { color: var(--text); font-weight: 600; }
+
+.p9-opponents {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.p9-opponent {
+  flex-shrink: 0;
+  min-width: 130px;
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  transition: border-color 180ms, background 180ms;
+}
+.p9-opponent.active {
+  border-color: var(--gold, #f59e0b);
+  background: color-mix(in srgb, var(--panel), var(--gold, #f59e0b) 10%);
+}
+.p9-opponent .p9-opp-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.p9-opponent .p9-opp-name { font-weight: 600; color: var(--text); }
+.p9-opponent .p9-opp-score { color: var(--muted); }
+.p9-opponent .p9-grid { --p9-card-w: 28px; --p9-card-h: 38px; gap: 3px; }
+.p9-opponent .p9-card { font-size: 14px; }
+.p9-opponent .p9-card .p9-card-corner { font-size: 8px; }
+
+.p9-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 0;
+}
+.p9-pile-label { font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 4px; letter-spacing: 1px; text-transform: uppercase; }
+.p9-pile { display: flex; flex-direction: column; align-items: center; }
+
+.p9-prompt {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 20px;
+}
+.p9-prompt.active { color: var(--text); font-weight: 500; }
+
+.p9-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.p9-my-grid-wrap {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.p9-my-grid-wrap.active {
+  box-shadow: 0 0 0 2px var(--gold, #f59e0b);
+}
+.p9-my-grid-wrap .p9-my-score-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.p9-my-grid-wrap .p9-my-score-row strong { color: var(--text); }
+
+.p9-grid {
+  --p9-card-w: 52px;
+  --p9-card-h: 72px;
+  display: grid;
+  grid-template-columns: repeat(4, var(--p9-card-w));
+  grid-template-rows: repeat(2, var(--p9-card-h));
+  gap: 6px;
+  justify-content: center;
+}
+
+.p9-card {
+  position: relative;
+  width: var(--p9-card-w, 52px);
+  height: var(--p9-card-h, 72px);
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  background: #fafaf0;
+  color: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  user-select: none;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.p9-card.clickable { cursor: pointer; transition: transform 120ms, box-shadow 120ms; }
+.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5); }
+
+.p9-card .p9-card-center {
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+}
+.p9-card .p9-card-corner {
+  position: absolute;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 400;
+}
+.p9-card .p9-card-corner.top-left { top: 4px; left: 5px; }
+.p9-card .p9-card-corner.bottom-right { bottom: 4px; right: 5px; transform: rotate(180deg); }
+
+.p9-card.face-down {
+  background: #1e3a2f;
+  background-image:
+    repeating-linear-gradient(45deg, #264d3e 0 6px, #1e3a2f 6px 12px);
+  border-color: #0d2018;
+}
+.p9-card.face-down .p9-card-center,
+.p9-card.face-down .p9-card-corner { display: none; }
+
+/* Color bands by value — subtle fill + stronger number color. */
+.p9-card.tone-h1o   { background: #fef3c7; color: #a16207; }
+.p9-card.tone-zero  { background: #fafaf0; color: #374151; }
+.p9-card.tone-low   { background: #dcfce7; color: #166534; }
+.p9-card.tone-mid   { background: #dbeafe; color: #1e3a8a; }
+.p9-card.tone-high  { background: #fee2e2; color: #991b1b; }
+
+.p9-card.selected {
+  outline: 3px solid var(--gold, #f59e0b);
+  outline-offset: 1px;
+  transform: translateY(-2px);
+}
+.p9-card.matched { box-shadow: inset 0 0 0 2px rgba(22, 163, 74, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35); }
+.p9-card.cancelled .p9-card-center,
+.p9-card.cancelled .p9-card-corner {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.p9-card.empty {
+  background: transparent;
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.p9-drawn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0 8px;
+}
+.p9-drawn-label { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+
+.p9-reveal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 20, 10, 0.92);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+}
+.p9-reveal-title {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.p9-reveal-row {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.p9-reveal-row-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  align-items: baseline;
+}
+.p9-reveal-row-name { font-weight: 600; font-size: 14px; }
+.p9-reveal-row-score { font-size: 14px; }
+.p9-reveal-row-total { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.p9-reveal-bonuses { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.p9-reveal-chip {
+  background: rgba(234, 179, 8, 0.2);
+  border: 1px solid rgba(234, 179, 8, 0.5);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+@media (max-width: 500px) {
+  .p9-grid { --p9-card-w: 44px; --p9-card-h: 62px; }
+  .p9-card .p9-card-center { font-size: 18px; }
+  .p9-opponent { min-width: 110px; }
+  .p9-opponent .p9-grid { --p9-card-w: 22px; --p9-card-h: 32px; gap: 2px; }
+  .p9-opponent .p9-card { font-size: 11px; }
+}
+

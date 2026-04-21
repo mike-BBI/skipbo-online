@@ -3,6 +3,7 @@ import { createHost, createClient, generateRoomCode } from './realtimeNet.js';
 import { Stats } from './Stats.jsx';
 import { skipboGame } from './games/skipbo/index.js';
 import { bastraGame } from './games/bastra/index.js';
+import { playnineGame } from './games/playnine/index.js';
 
 // Thin error boundary so a render crash inside the game (e.g. during
 // the end-of-round reveal) surfaces the real exception instead of
@@ -59,6 +60,7 @@ class GameErrorBoundary extends Component {
 const GAMES = {
   skipbo: skipboGame,
   bastra: bastraGame,
+  playnine: playnineGame,
 };
 
 // Resolve once at module load. The ?game= param survives reloads and
@@ -677,6 +679,57 @@ export default function App() {
               {mode === 'target'
                 ? `First to ${targetScore} wins.`
                 : `Highest score after ${targetRounds} round${targetRounds === 1 ? '' : 's'} wins.`}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
+            <button className="secondary" onClick={goHome} style={{ flex: 1 }}>Back</button>
+            <button onClick={startPractice} style={{ flex: 2 }}>Start game</button>
+          </div>
+          {error && <div className="error">{error}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'practice-setup' && currentGame.id === 'playnine') {
+    const humanName = name.trim() || 'You';
+    const maxCpus = Math.min(currentGame.maxPlayers - 1, 3);
+    const safeCpus = Math.max(1, Math.min(cpuCount, maxCpus));
+    const playerCount = 1 + safeCpus;
+    const targetHoles = practiceRules.targetHoles ?? currentGame.defaultRules.targetHoles ?? 9;
+    const holeOptions = [3, 6, 9, 12, 18].map((n) => [`${n} hole${n === 1 ? '' : 's'}`, n]);
+    const patchRules = (patch) => setPracticeRules((r) => ({ ...currentGame.defaultRules, ...r, ...patch }));
+    return (
+      <div className="app">
+        <div className="lobby">
+          <h1 style={{ fontSize: 32 }}>Play Nine vs CPU</h1>
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Players</div>
+            <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+              {humanName} + {safeCpus} CPU{safeCpus === 1 ? '' : 's'} ({playerCount} total)
+            </div>
+            <PracticeRuleRow
+              label="CPU opponents"
+              value={safeCpus}
+              options={Array.from({ length: maxCpus }, (_, i) => [i + 1, i + 1])}
+              onChange={(v) => setCpuCount(v)}
+            />
+            <CpuDifficultyList
+              count={safeCpus}
+              values={cpuDifficulties}
+              onChange={setCpuDifficultyAt}
+            />
+          </div>
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Rules</div>
+            <PracticeRuleRow
+              label="Match length"
+              value={targetHoles}
+              options={holeOptions}
+              onChange={(v) => patchRules({ targetHoles: v })}
+            />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              108-card deck (8 of each 0–12, 4 Hole-in-One at -5). Lowest total after {targetHoles} hole{targetHoles === 1 ? '' : 's'} wins.
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
