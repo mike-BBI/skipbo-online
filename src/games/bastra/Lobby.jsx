@@ -217,6 +217,7 @@ function StatusIndicator({ status }) {
   else if (status.kind === 'open') { color = 'var(--accent-2)'; text = 'connected'; }
   else if (status.kind === 'connecting') { color = 'var(--gold)'; text = status.attempt > 1 ? `retrying host (${status.attempt})…` : 'connecting…'; }
   else if (status.kind === 'retrying') { color = 'var(--gold)'; text = 'waiting for host…'; }
+  else if (status.kind === 'reconnecting') { color = 'var(--gold)'; text = 'reconnecting…'; }
   else if (status.kind === 'reclaiming') { color = 'var(--gold)'; text = `reclaiming room (${status.attempts}/${status.maxAttempts})…`; }
   else if (status.kind === 'disconnected') { color = 'var(--gold)'; text = 'reconnecting…'; }
   else if (status.kind === 'error') { color = '#ef4444'; text = 'error'; }
