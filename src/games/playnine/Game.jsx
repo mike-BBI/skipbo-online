@@ -232,6 +232,9 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         {isMyTurn && flipMode && (
           <button className="secondary" onClick={cancelFlipMode}>Cancel</button>
         )}
+        {state.undoSnapshot?.actor === myId && !state.holeEnded && (
+          <button className="secondary" onClick={() => onAction({ type: 'undo' })}>Undo</button>
+        )}
       </div>
 
       <div className={`p9-my-grid-wrap ${isMyTurn ? 'active' : ''}`}>

@@ -419,17 +419,37 @@ export function applyAction(state, playerId, action) {
   if (state.winner) return { ok: false, error: 'Match is over.', state };
   if (!action) return { ok: false, error: 'No action.', state };
 
+  // Undo restores the snapshot taken before the most recent action,
+  // limited to the same player who took that action. Snapshot is
+  // cleared after undo (no chained undos) and whenever the next
+  // turn-ending event happens.
+  if (action.type === 'undo') {
+    const snap = state.undoSnapshot;
+    if (!snap) return { ok: false, error: 'Nothing to undo.', state };
+    if (snap.actor !== playerId) return { ok: false, error: 'You can only undo your own last action.', state };
+    const next = structuredClone(snap.state);
+    next.undoSnapshot = null;
+    next.version = (state.version || 0) + 1;
+    return { ok: true, state: next };
+  }
+
   if (action.type === 'nextHole') {
     if (!state.holeEnded) return { ok: false, error: 'Hole still in progress.', state };
     if (state.winner) return { ok: false, error: 'Match is over.', state };
     const next = structuredClone(state);
     startNextHole(next);
+    next.undoSnapshot = null;
     next.version = (next.version || 0) + 1;
     return { ok: true, state: next };
   }
 
   if (state.holeEnded) return { ok: false, error: 'Hole is over — advance to the next one.', state };
   if (playerId !== state.turn) return { ok: false, error: "Not your turn.", state };
+
+  // Snapshot pre-action state so the player can undo their own move.
+  // Strip the previous snapshot first so structuredClone doesn't nest
+  // snapshots indefinitely over the course of a hole.
+  const pre = structuredClone({ ...state, undoSnapshot: null });
 
   const next = structuredClone(state);
   let res;
@@ -444,6 +464,8 @@ export function applyAction(state, playerId, action) {
   }
   if (!res.ok) return { ok: false, error: res.error, state };
 
+  next.undoSnapshot = { state: pre, actor: playerId };
+
   if (action.type === 'teeOffFlip') {
     next.version = (next.version || 0) + 1;
     return { ok: true, state: next };
@@ -451,6 +473,10 @@ export function applyAction(state, playerId, action) {
 
   if (TURN_ENDING_ACTIONS.has(action.type)) {
     advanceTurn(next, playerId);
+    // If the turn-ending action put the hole to bed, the snapshot
+    // references a pre-ended-hole state; clear it so we don't offer
+    // to undo into a re-scorable position.
+    if (next.holeEnded) next.undoSnapshot = null;
   }
   next.version = (next.version || 0) + 1;
   return { ok: true, state: next };

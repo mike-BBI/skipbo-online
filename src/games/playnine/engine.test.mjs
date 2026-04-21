@@ -262,6 +262,62 @@ section('Skip only legal with exactly 1 face-down remaining');
   assert(r2.state.turn !== actor, 'skip still advances the turn');
 }
 
+// ─────────────────────────── Undo ───────────────────────────
+section('Undo restores the pre-action state for the same actor');
+{
+  let g = createGame(['a', 'b'], {});
+  for (const id of ['a', 'b']) {
+    for (let s = 0; s < 2; s += 1) g = applyAction(g, id, { type: 'teeOffFlip', slot: s }).state;
+  }
+  const actor = g.turn;
+  const preDeckLen = g.deck.length;
+  const preDiscardLen = g.discard.length;
+  g = applyAction(g, actor, { type: 'drawDeck' }).state;
+  assert(g.deck.length === preDeckLen - 1, 'deck shrank after drawDeck');
+  assert(g.players[actor].drawn !== null, 'card in hand');
+  assert(g.undoSnapshot?.actor === actor, 'undoSnapshot points at actor');
+  g = applyAction(g, actor, { type: 'undo' }).state;
+  assert(g.deck.length === preDeckLen, 'deck restored after undo');
+  assert(g.players[actor].drawn === null, 'hand cleared after undo');
+  assert(g.undoSnapshot === null, 'snapshot cleared — no chained undo');
+  const r2 = applyAction(g, actor, { type: 'undo' });
+  assert(!r2.ok, 'a second undo with no snapshot fails');
+}
+
+section('Undo rejected for non-actor');
+{
+  let g = createGame(['a', 'b'], {});
+  for (const id of ['a', 'b']) {
+    for (let s = 0; s < 2; s += 1) g = applyAction(g, id, { type: 'teeOffFlip', slot: s }).state;
+  }
+  const actor = g.turn;
+  g = applyAction(g, actor, { type: 'drawDeck' }).state;
+  const other = g.playerOrder.find((id) => id !== actor);
+  const r = applyAction(g, other, { type: 'undo' });
+  assert(!r.ok, 'other player cannot undo');
+}
+
+section('Undo snapshot cleared when the hole ends');
+{
+  let g = createGame(['a', 'b'], {});
+  for (const id of ['a', 'b']) {
+    for (let s = 0; s < 2; s += 1) g = applyAction(g, id, { type: 'teeOffFlip', slot: s }).state;
+  }
+  const leader = g.turn;
+  // Force leader into 1 face-down, then put out.
+  for (let i = 2; i < 7; i += 1) g.players[leader].flipped[i] = true;
+  g = applyAction(g, leader, { type: 'drawDeck' }).state;
+  g = applyAction(g, leader, { type: 'replace', slot: 7 }).state;
+  // Play out final lap until hole ends.
+  while (!g.holeEnded) {
+    const who = g.turn;
+    g = applyAction(g, who, { type: 'drawDeck' }).state;
+    g = applyAction(g, who, { type: 'replace', slot: 0 }).state;
+  }
+  assert(g.holeEnded === true, 'hole ended');
+  assert(g.undoSnapshot === null, 'snapshot cleared at hole end');
+}
+
 // ─────────────────────────── Bot difficulty sanity ───────────────────────────
 import { cpuPlan } from './bot.js';
 

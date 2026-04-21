@@ -437,7 +437,12 @@ export default function App() {
       setError(null);
       practiceStateRef.current = res.state;
       setGameState(res.state);
-      if (res.state.turn !== HUMAN_ID && !res.state.winner) scheduleCpuTurn(res.state);
+      // Always re-scheduleCpuTurn: it clears any stale pending CPU
+      // timer, then either arms a new one for a CPU turn or no-ops
+      // when it's the human's turn. Important for undo, which can
+      // flip the turn back to the human after the CPU was already
+      // queued.
+      scheduleCpuTurn(res.state);
       return;
     }
     // Realtime rooms: all players submit their own actions directly.
