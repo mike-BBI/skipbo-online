@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Chat } from '../../Chat.jsx';
 import { MAX_PLAYERS, MIN_PLAYERS, requiredDecks } from './engine.js';
 
-export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, onAddCpu, onRemoveCpu, onSetCpuDifficulty, chatMessages, onSendChat, onLeave, error, peerStatus }) {
+export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, onAddCpu, onRemoveCpu, onSetCpuDifficulty, chatMessages, onSendChat, onLeave, error, peerStatus, inviteUrl }) {
   const [editingName, setEditingName] = useState(false);
   const me = lobby.players.find((p) => p.id === myId);
   const [nameDraft, setNameDraft] = useState(me?.name || '');
@@ -30,7 +30,10 @@ export function Lobby({ lobby, isHost, myId, onStart, onUpdateRules, onRename, o
           <div className="room-code" style={{ fontSize: 28 }}>{lobby.roomCode}</div>
           {peerStatus && <StatusIndicator status={peerStatus} />}
         </div>
-        <button className="secondary" onClick={onLeave}>Leave</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {inviteUrl && <CopyInviteButton url={inviteUrl} />}
+          <button className="secondary" onClick={onLeave}>Leave</button>
+        </div>
       </div>
 
       <div style={{ background: 'var(--panel)', borderRadius: 10, padding: 12 }}>
@@ -152,10 +155,31 @@ function PlayerRow({ player, isMe, isHostSeat, canEditName, onBeginEditName, can
   );
 }
 
+function CopyInviteButton({ url }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Older browsers / insecure contexts: fall back to a prompt.
+      window.prompt('Copy this invite link:', url);
+    }
+  };
+  return (
+    <button className="secondary" onClick={onCopy} style={{ padding: '4px 10px', fontSize: 12 }}>
+      {copied ? 'Copied!' : 'Copy invite'}
+    </button>
+  );
+}
+
 function StatusIndicator({ status }) {
   let color = 'var(--muted)';
   let text = '';
-  if (status.kind === 'connecting') { color = 'var(--gold)'; text = 'connecting…'; }
+  if (status.kind === 'connecting') { color = 'var(--gold)'; text = status.attempt > 1 ? `retrying host (${status.attempt})…` : 'connecting…'; }
+  else if (status.kind === 'retrying') { color = 'var(--gold)'; text = 'waiting for host…'; }
+  else if (status.kind === 'reclaiming') { color = 'var(--gold)'; text = `reclaiming room (${status.attempts}/${status.maxAttempts})…`; }
   else if (status.kind === 'open') { color = 'var(--accent-2)'; text = 'connected'; }
   else if (status.kind === 'disconnected') { color = 'var(--gold)'; text = 'reconnecting…'; }
   else if (status.kind === 'error') { color = 'var(--danger)'; text = status.message || status.type; }

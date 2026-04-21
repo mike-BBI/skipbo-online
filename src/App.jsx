@@ -90,7 +90,15 @@ export default function App() {
   const [phase, setPhase] = useState('home'); // home | connecting | lobby | game
   const [mode, setMode] = useState(null); // 'host' | 'client' | 'practice'
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) || '');
-  const [joinCode, setJoinCode] = useState('');
+  // Pre-fill the join code from ?room=XXXX if an invite link was used.
+  // Invitees land on the home screen with the code already in the input
+  // so they can confirm and join; a host who lost their tab can likewise
+  // click Create to reclaim the same code.
+  const [joinCode, setJoinCode] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const raw = new URLSearchParams(window.location.search).get('room') || '';
+    return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+  });
   const [error, setError] = useState(null);
   const [cpuCount, setCpuCount] = useState(2);
   const [cpuDifficulties, setCpuDifficulties] = useState(['normal', 'normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
@@ -228,6 +236,7 @@ export default function App() {
     setMode(null);
     setError(null);
     setPhase('home');
+    clearRoomFromUrl();
   };
 
   const onLobby = (lobby) => {
@@ -243,7 +252,12 @@ export default function App() {
     setError(null);
     if (!name.trim()) { setError('Enter a name first.'); return; }
     setPhase('connecting');
-    const code = generateRoomCode();
+    // Prefer a code carried in the URL so a host who closed their tab
+    // can reclaim the same code by clicking their invite link and
+    // pressing Create again. Falls back to a fresh random code.
+    const urlCode = new URLSearchParams(window.location.search).get('room') || '';
+    const cleanUrlCode = urlCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+    const code = cleanUrlCode.length === 4 ? cleanUrlCode : generateRoomCode();
     try {
       const h = await createHost({
         game: currentGame,
@@ -259,9 +273,41 @@ export default function App() {
       setLobbyState(h.getLobby());
       setPhase('lobby');
       createRoom({ code, hostName: name.trim(), maxPlayers: MAX_PLAYERS, gameType: currentGame.id });
+      writeRoomToUrl(code);
     } catch (err) {
       setError(err.message || String(err));
       setPhase('home');
+    }
+  }
+
+  // Mirror the room code into the URL so the host (and anyone they
+  // share with) can bookmark the link — reloading or clicking it later
+  // pre-fills the same code and lets them rehost / rejoin.
+  function writeRoomToUrl(code) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('game', currentGame.id);
+      url.searchParams.set('room', code);
+      window.history.replaceState(null, '', url.toString());
+    } catch {}
+  }
+
+  function clearRoomFromUrl() {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('room');
+      window.history.replaceState(null, '', url.toString());
+    } catch {}
+  }
+
+  function inviteUrl(code) {
+    try {
+      const url = new URL(window.location.origin + window.location.pathname);
+      url.searchParams.set('game', currentGame.id);
+      url.searchParams.set('room', code);
+      return url.toString();
+    } catch {
+      return '';
     }
   }
 
@@ -283,6 +329,7 @@ export default function App() {
       });
       setNet(c);
       setMode('client');
+      writeRoomToUrl(code);
     } catch (err) {
       setError(err.message || String(err));
       setPhase('home');
@@ -709,6 +756,7 @@ export default function App() {
           onLeave={goHome}
           error={error}
           peerStatus={peerStatus}
+          inviteUrl={lobbyState.roomCode ? inviteUrl(lobbyState.roomCode) : ''}
         />
       </div>
     );

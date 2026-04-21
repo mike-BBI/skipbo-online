@@ -52,22 +52,46 @@ const PEER_CONFIG = {
   },
 };
 
-function openPeer(id) {
+// Retry budget for reclaiming a peer ID that's still held by the PeerJS
+// broker after a host's previous tab went away. Broker TTL is ~60s, so
+// we poll for up to that long with short gaps. Only `unavailable-id`
+// errors trigger retries — hard errors (browser-incompatible, network)
+// bubble up immediately.
+const RECLAIM_RETRIES = 12;
+const RECLAIM_DELAY_MS = 5000;
+
+function openPeer(id, { onRetry } = {}) {
   return new Promise((resolve, reject) => {
-    const peer = id ? new Peer(id, PEER_CONFIG) : new Peer(PEER_CONFIG);
-    const onOpen = (pid) => {
-      cleanup();
-      // If the peer disconnects from the signaling server later, try
-      // to reconnect so new joiners can still find the host.
-      peer.on('disconnected', () => {
-        try { peer.reconnect(); } catch {}
-      });
-      resolve({ peer, id: pid });
+    let attempts = 0;
+    const attempt = () => {
+      attempts += 1;
+      const peer = id ? new Peer(id, PEER_CONFIG) : new Peer(PEER_CONFIG);
+      const onOpen = (pid) => {
+        cleanup();
+        // If the peer disconnects from the signaling server later, try
+        // to reconnect so new joiners can still find the host.
+        peer.on('disconnected', () => {
+          try { peer.reconnect(); } catch {}
+        });
+        resolve({ peer, id: pid });
+      };
+      const onError = (err) => {
+        cleanup();
+        const type = err?.type || '';
+        if (type === 'unavailable-id' && attempts < RECLAIM_RETRIES) {
+          try { peer.destroy(); } catch {}
+          onRetry?.({ attempts, maxAttempts: RECLAIM_RETRIES });
+          setTimeout(attempt, RECLAIM_DELAY_MS);
+          return;
+        }
+        try { peer.destroy(); } catch {}
+        reject(err);
+      };
+      const cleanup = () => { peer.off('open', onOpen); peer.off('error', onError); };
+      peer.on('open', onOpen);
+      peer.on('error', onError);
     };
-    const onError = (err) => { cleanup(); reject(err); };
-    const cleanup = () => { peer.off('open', onOpen); peer.off('error', onError); };
-    peer.on('open', onOpen);
-    peer.on('error', onError);
+    attempt();
   });
 }
 
@@ -80,7 +104,11 @@ export async function createHost({ game: gameSpec, roomCode, hostName, hostProfi
   if (!gameSpec) throw new Error('createHost requires a game descriptor');
   const { createGame, applyAction, cpuPlan, minPlayers, maxPlayers, defaultRules, botActionDelay, botBetweenTurns } = gameSpec;
   onStatus?.({ kind: 'connecting' });
-  const { peer } = await openPeer(hostPeerId(roomCode));
+  const { peer } = await openPeer(hostPeerId(roomCode), {
+    onRetry: ({ attempts, maxAttempts }) => {
+      onStatus?.({ kind: 'reclaiming', attempts, maxAttempts });
+    },
+  });
   onStatus?.({ kind: 'open', peerId: peer.id });
   peer.on('disconnected', () => onStatus?.({ kind: 'disconnected' }));
   peer.on('close', () => onStatus?.({ kind: 'closed' }));
@@ -504,31 +532,86 @@ export async function createClient({ roomCode, name, profileId, onLobby, onState
   onStatus?.({ kind: 'connecting', phase: 'signaling' });
   const { peer } = await openPeer();
   onStatus?.({ kind: 'connecting', phase: 'host', peerId: peer.id });
-  const conn = peer.connect(hostPeerId(roomCode), { reliable: true });
+  let conn = null;
 
   peer.on('disconnected', () => onStatus?.({ kind: 'disconnected' }));
   peer.on('close', () => onStatus?.({ kind: 'closed' }));
+  // Keep a running error listener so we can observe peer-unavailable
+  // events that fire outside of a specific conn's lifecycle (PeerJS
+  // emits them on the peer for each failed connect()).
+  let lastPeerError = null;
   peer.on('error', (err) => {
-    onStatus?.({ kind: 'error', type: err.type, message: err.message || String(err) });
+    lastPeerError = err;
+    if (err?.type !== 'peer-unavailable') {
+      onStatus?.({ kind: 'error', type: err.type, message: err.message || String(err) });
+    }
   });
 
-  try {
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timed out reaching host. Usually this means the host is offline, behind a restrictive network, or a privacy extension is blocking signaling.')), 10000);
-      conn.on('open', () => { clearTimeout(timeout); resolve(); });
-      conn.on('error', (err) => {
-        clearTimeout(timeout);
-        const type = err.type || '';
-        let msg = err.message || String(err);
-        if (type === 'peer-unavailable') msg = `Room ${roomCode} not found. Check the code or ask the host to create a new one.`;
-        else if (type === 'network') msg = 'Signaling server unreachable. Check your connection or try disabling privacy extensions (Guardio, NortonSafeWeb, etc.).';
-        else if (type === 'browser-incompatible') msg = 'This browser does not support WebRTC.';
-        const e = new Error(msg); e.type = type; reject(e);
+  // Retry on peer-unavailable so invite links survive brief host outages
+  // (tab reload, network blip). Hard errors bail immediately. Budget is
+  // ~30s total — long enough to cover the PeerJS broker's ID-release
+  // TTL so a host who refreshed their tab can reclaim their code.
+  const ATTEMPT_TIMEOUT_MS = 8000;
+  const RETRY_DELAY_MS = 2500;
+  const TOTAL_TIMEOUT_MS = 30000;
+  const startedAt = Date.now();
+  let attempts = 0;
+  let finalErr = null;
+  while (Date.now() - startedAt < TOTAL_TIMEOUT_MS) {
+    attempts += 1;
+    if (attempts > 1) onStatus?.({ kind: 'connecting', phase: 'host', attempt: attempts });
+    if (!conn || conn.open === false) {
+      try { conn?.close(); } catch {}
+      conn = peer.connect(hostPeerId(roomCode), { reliable: true });
+    }
+    try {
+      await new Promise((resolve, reject) => {
+        const tmo = setTimeout(() => {
+          const e = new Error('attempt-timeout');
+          e.type = 'timeout';
+          reject(e);
+        }, ATTEMPT_TIMEOUT_MS);
+        const cleanup = () => {
+          clearTimeout(tmo);
+          conn.off('open', onOpen);
+          conn.off('error', onConnErr);
+        };
+        const onOpen = () => { cleanup(); resolve(); };
+        const onConnErr = (err) => {
+          cleanup();
+          const type = err?.type || '';
+          let msg = err?.message || String(err);
+          if (type === 'network') msg = 'Signaling server unreachable. Check your connection or try disabling privacy extensions (Guardio, NortonSafeWeb, etc.).';
+          else if (type === 'browser-incompatible') msg = 'This browser does not support WebRTC.';
+          const e = new Error(msg); e.type = type; reject(e);
+        };
+        conn.once('open', onOpen);
+        conn.once('error', onConnErr);
       });
-    });
-  } catch (err) {
-    onStatus?.({ kind: 'error', type: err.type || 'connect-timeout', message: err.message });
-    throw err;
+      finalErr = null;
+      break;
+    } catch (err) {
+      finalErr = err;
+      const type = err?.type || lastPeerError?.type || '';
+      // Hard errors — don't retry. peer-unavailable and timeout do retry.
+      if (type !== 'peer-unavailable' && type !== 'timeout') {
+        try { conn.close(); } catch {}
+        onStatus?.({ kind: 'error', type: type || 'error', message: err.message });
+        throw err;
+      }
+      try { conn.close(); } catch {}
+      conn = null;
+      onStatus?.({ kind: 'retrying', phase: 'host', elapsed: Date.now() - startedAt, reason: type });
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    }
+  }
+  if (!conn || conn.open === false) {
+    const msg = 'Timed out reaching host after 30s. The host may be offline, or a privacy extension (Guardio, NortonSafeWeb) is blocking the WebRTC signaling. Try again in a moment.';
+    const e = new Error(msg);
+    e.type = finalErr?.type || 'connect-timeout';
+    onStatus?.({ kind: 'error', type: e.type, message: msg });
+    try { peer.destroy(); } catch {}
+    throw e;
   }
 
   onStatus?.({ kind: 'open', peerId: peer.id });
