@@ -2295,7 +2295,7 @@ select { width: auto; padding: 6px 8px; }
 .p9-reveal-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 20, 10, 0.92);
+  background: rgba(0, 20, 10, 0.94);
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -2306,31 +2306,139 @@ select { width: auto; padding: 6px 8px; }
   text-align: center;
   font-size: 22px;
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   color: var(--text);
 }
-.p9-reveal-row {
-  background: rgba(255, 255, 255, 0.04);
+
+/* Scorecard — grid with 1 hole-col + N player-cols. Rows use
+   display:contents so children participate in the parent grid while
+   row classes (.current, .header, .total) still style descendants. */
+.p9-scorecard {
+  display: grid;
+  grid-template-columns: 64px repeat(var(--players, 3), minmax(56px, 1fr));
+  gap: 1px;
+  background: rgba(0, 0, 0, 0.55);
   border-radius: 10px;
-  padding: 10px;
-  margin-bottom: 10px;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
-.p9-reveal-row-header {
+.p9-scorecard-row { display: contents; }
+
+.p9-scorecard-cell {
+  background: #fffef7;
+  color: #111;
+  padding: 10px 6px;
+  text-align: center;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.p9-scorecard-row.header .p9-scorecard-cell {
+  background: #1f2937;
+  color: #e5e7eb;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  padding: 8px 6px;
+}
+.p9-scorecard-row.header .p9-scorecard-cell.is-me {
+  background: #b45309;
+  color: #fffbeb;
+}
+.p9-scorecard-cell.hole-cell {
+  background: #f3efdc;
+  color: #111;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.p9-scorecard-row.header .p9-scorecard-cell.hole-cell {
+  background: #1f2937;
+  color: #e5e7eb;
+}
+.p9-scorecard-cell .p9-flag { font-size: 13px; opacity: 0.75; }
+
+.p9-scorecard-row.current .p9-scorecard-cell {
+  background: #fef3c7;
+}
+.p9-scorecard-row.current .p9-scorecard-cell.hole-cell {
+  background: #fde68a;
+  color: #78350f;
+}
+
+.p9-scorecard-cell.just-filled {
+  animation: p9-cell-fill 420ms ease-out;
+}
+@keyframes p9-cell-fill {
+  0%   { background: #f59e0b; color: #fffbeb; transform: scale(0.9); }
+  50%  { background: #fcd34d; color: #1f2937; transform: scale(1.08); }
+  100% { background: #fef3c7; color: #111; transform: scale(1); }
+}
+
+.p9-scorecard-row.total .p9-scorecard-cell {
+  background: #111827;
+  color: #f3f4f6;
+  font-weight: 800;
+  font-size: 16px;
+  padding: 10px 6px;
+}
+.p9-scorecard-row.total .p9-scorecard-cell.hole-cell {
+  background: #111827;
+  color: #f3f4f6;
+  letter-spacing: 0.5px;
+}
+.p9-scorecard-row.total .p9-scorecard-cell.leader {
+  background: #065f46;
+  color: #ecfdf5;
+}
+
+.p9-reveal-bonus-rows {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
 }
-.p9-reveal-row-name { font-weight: 600; font-size: 14px; }
-.p9-reveal-row-score { font-size: 14px; }
-.p9-reveal-row-total { color: var(--muted); font-size: 12px; margin-left: 6px; }
-.p9-reveal-bonuses { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.p9-reveal-bonus-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  font-size: 12px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+.p9-reveal-bonus-row-name {
+  color: var(--text);
+  font-weight: 600;
+  margin-right: 6px;
+}
 .p9-reveal-chip {
   background: rgba(234, 179, 8, 0.2);
   border: 1px solid rgba(234, 179, 8, 0.5);
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 2px 7px;
   font-size: 11px;
+  font-weight: 500;
+}
+.p9-reveal-chip.no-bonus {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--muted);
+  font-style: italic;
+}
+
+.p9-reveal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 10px;
 }
 
 @media (max-width: 520px) {

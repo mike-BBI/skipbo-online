@@ -269,26 +269,49 @@ function labelFor(v) {
   return String(v);
 }
 
-// Staggered end-of-hole reveal. Each player's row sequences:
-//   1) cards flip face-up with ~80ms stagger
-//   2) cancelled cards get their strike-through
-//   3) bonus chips pop in with their pts, running total bumps
-// After the final row finishes, action buttons appear.
+// End-of-hole reveal modeled on the physical Play Nine scorecard:
+// one row per hole, one column per player, running total at the
+// bottom. The just-finished hole is highlighted; each player's
+// score for that hole fills in with a staggered "cell-flash" so the
+// eye can follow who scored what. Per-player bonus chips for the
+// current hole appear below the scorecard so you can see WHY the
+// numbers came out that way.
 function RoundReveal({ state, myId, onNext, onLeave }) {
   const isMatchEnd = !!state.winner;
   const players = state.playerOrder.map((id) => state.players[id]);
-  const breakdowns = players.map((p) => ({ p, bd: scoreBreakdown(p.grid) }));
+  const target = state.rules?.targetHoles ?? 9;
+  const currentHole = state.hole;
 
-  // Gate action buttons until the cascade finishes.
-  const [actionsReady, setActionsReady] = useState(false);
+  const breakdowns = useMemo(
+    () => players.map((p) => ({ p, bd: scoreBreakdown(p.grid) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.version],
+  );
+
+  const [cellsFilled, setCellsFilled] = useState(0);
+  const [chipsFilled, setChipsFilled] = useState(0);
   const [skipped, setSkipped] = useState(false);
+  const [actionsReady, setActionsReady] = useState(false);
+
   useEffect(() => {
-    if (skipped) { setActionsReady(true); return; }
-    const perRow = GRID_SIZE * 80 + 1000; // 8 cards × 80ms + bonus time
-    const total = breakdowns.length * perRow + 500;
-    const t = setTimeout(() => setActionsReady(true), total);
-    return () => clearTimeout(t);
-  }, [skipped, breakdowns.length]);
+    if (skipped) {
+      setCellsFilled(players.length);
+      setChipsFilled(players.length);
+      setActionsReady(true);
+      return;
+    }
+    const timers = [];
+    players.forEach((_, i) => {
+      timers.push(setTimeout(() => setCellsFilled(i + 1), 350 + i * 320));
+    });
+    const cellsEndAt = 350 + players.length * 320;
+    players.forEach((_, i) => {
+      timers.push(setTimeout(() => setChipsFilled(i + 1), cellsEndAt + 150 + i * 220));
+    });
+    const chipsEndAt = cellsEndAt + 150 + players.length * 220;
+    timers.push(setTimeout(() => setActionsReady(true), chipsEndAt + 300));
+    return () => timers.forEach(clearTimeout);
+  }, [skipped, players.length]);
 
   return (
     <div className="p9-reveal-overlay">
@@ -297,17 +320,34 @@ function RoundReveal({ state, myId, onNext, onLeave }) {
           ? (state.winner === myId ? '🏆 You won the match!' : `${state.players[state.winner].name} wins the match`)
           : `Hole ${state.hole} complete`}
       </div>
-      {breakdowns.map(({ p, bd }, rowIdx) => (
-        <RevealRow
-          key={p.id}
-          player={p}
-          bd={bd}
-          isMe={p.id === myId}
-          rowIdx={rowIdx}
-          skipped={skipped}
-        />
-      ))}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10 }}>
+
+      <Scorecard
+        state={state}
+        myId={myId}
+        currentHole={currentHole}
+        target={target}
+        players={players}
+        cellsFilled={cellsFilled}
+      />
+
+      <div className="p9-reveal-bonus-rows">
+        {breakdowns.slice(0, chipsFilled).map(({ p, bd }) => (
+          <div key={p.id} className="p9-reveal-bonus-row">
+            <span className="p9-reveal-bonus-row-name">
+              {p.name}{p.id === myId ? ' (you)' : ''}
+            </span>
+            {bd.bonuses.length === 0 ? (
+              <span className="p9-reveal-chip no-bonus">no bonuses this hole</span>
+            ) : (
+              bd.bonuses.map((b, i) => (
+                <span key={i} className="p9-reveal-chip">{b.label} {b.pts >= 0 ? '+' : ''}{b.pts}</span>
+              ))
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="p9-reveal-actions">
         {!skipped && !actionsReady && (
           <button className="secondary" onClick={() => setSkipped(true)}>Skip</button>
         )}
@@ -320,68 +360,66 @@ function RoundReveal({ state, myId, onNext, onLeave }) {
   );
 }
 
-function RevealRow({ player, bd, isMe, rowIdx, skipped }) {
-  // Phase 0: cards revealing. Phase 1: chips popping. Phase 2: done.
-  const startDelay = skipped ? 0 : rowIdx * (GRID_SIZE * 80 + 1000);
-  const [chipIndex, setChipIndex] = useState(skipped ? bd.bonuses.length : 0);
-  const [runningScore, setRunningScore] = useState(() => {
-    if (skipped) return bd.total;
-    let sum = 0;
-    for (let i = 0; i < GRID_SIZE; i += 1) if (!bd.cards[i].matched) sum += bd.cards[i].value;
-    // H1O-matched cards still contribute face value even without bonus.
-    for (let i = 0; i < GRID_SIZE; i += 1) if (bd.cards[i].matched && !bd.cards[i].cancelled) sum += bd.cards[i].value;
-    return sum;
-  });
-  const [bumpKey, setBumpKey] = useState(0);
-
-  useEffect(() => {
-    if (skipped) { setChipIndex(bd.bonuses.length); setRunningScore(bd.total); return; }
-    const timers = [];
-    // Start chips after all cards have flipped.
-    const cardsDoneAt = startDelay + GRID_SIZE * 80 + 250;
-    bd.bonuses.forEach((b, i) => {
-      timers.push(setTimeout(() => {
-        setChipIndex(i + 1);
-        setRunningScore((s) => s + b.pts);
-        setBumpKey((k) => k + 1);
-      }, cardsDoneAt + i * 360));
-    });
-    return () => timers.forEach(clearTimeout);
-  }, [skipped, startDelay, bd.bonuses.length, bd.total]);
+function Scorecard({ state, myId, currentHole, target, players, cellsFilled }) {
+  // Leader = lowest cumulative score. Flag in the total row so you
+  // can see the standings at a glance. Match-end: leader = winner.
+  let leader = players[0];
+  for (const p of players) {
+    if (p.cumulativeScore < leader.cumulativeScore) leader = p;
+  }
 
   return (
-    <div className="p9-reveal-row">
-      <div className="p9-reveal-row-header">
-        <span className="p9-reveal-row-name">{player.name}{isMe ? ' (you)' : ''}</span>
-        <span className="p9-reveal-row-score">
-          <span key={bumpKey} className={`p9-reveal-total-val ${bumpKey > 0 ? 'bump' : ''}`}>
-            {runningScore >= 0 ? '+' : ''}{runningScore}
-          </span>
-          <span className="p9-reveal-row-total">total {player.cumulativeScore}</span>
-        </span>
+    <div className="p9-scorecard" style={{ '--players': players.length }}>
+      <div className="p9-scorecard-row header">
+        <div className="p9-scorecard-cell hole-cell">Hole</div>
+        {players.map((p) => (
+          <div key={p.id} className={`p9-scorecard-cell ${p.id === myId ? 'is-me' : ''}`}>
+            {p.name}
+          </div>
+        ))}
       </div>
-      <div className="p9-grid" style={{ justifyContent: 'flex-start' }}>
-        {GRID_ORDER.map((i) => {
-          const c = bd.cards[i];
-          return (
-            <Card
-              key={i}
-              card={c.value}
-              matched={c.matched}
-              cancelled={c.cancelled}
-              animationClass={skipped ? '' : 'reveal-cascade'}
-              style={skipped ? undefined : { '--cascade-delay': `${startDelay + i * 80}ms` }}
-            />
-          );
-        })}
+      {Array.from({ length: target }, (_, i) => {
+        const hole = i + 1;
+        const isCurrent = hole === currentHole;
+        return (
+          <div key={hole} className={`p9-scorecard-row ${isCurrent ? 'current' : ''}`}>
+            <div className="p9-scorecard-cell hole-cell">
+              <span className="p9-flag" aria-hidden="true">⛳</span>
+              <span>{hole}</span>
+            </div>
+            {players.map((p, pIdx) => {
+              const sc = p.roundScores[i];
+              const visible = sc != null && (!isCurrent || pIdx < cellsFilled);
+              const justFilled = isCurrent && pIdx < cellsFilled;
+              return (
+                <div
+                  key={p.id}
+                  className={`p9-scorecard-cell score-cell ${justFilled ? 'just-filled' : ''}`}
+                >
+                  {visible ? formatScore(sc) : ''}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      <div className="p9-scorecard-row total">
+        <div className="p9-scorecard-cell hole-cell">Total</div>
+        {players.map((p) => (
+          <div
+            key={p.id}
+            className={`p9-scorecard-cell total-cell ${p.id === leader.id ? 'leader' : ''}`}
+          >
+            {p.cumulativeScore}
+          </div>
+        ))}
       </div>
-      {bd.bonuses.length > 0 && chipIndex > 0 && (
-        <div className="p9-reveal-bonuses">
-          {bd.bonuses.slice(0, chipIndex).map((b, i) => (
-            <span key={i} className="p9-reveal-chip">{b.label} {b.pts >= 0 ? '+' : ''}{b.pts}</span>
-          ))}
-        </div>
-      )}
     </div>
   );
+}
+
+function formatScore(s) {
+  if (s == null) return '';
+  if (s > 0) return '+' + s;
+  return String(s);
 }
