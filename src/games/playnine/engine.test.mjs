@@ -262,5 +262,43 @@ section('Skip only legal with exactly 1 face-down remaining');
   assert(r2.state.turn !== actor, 'skip still advances the turn');
 }
 
+// ─────────────────────────── Bot difficulty sanity ───────────────────────────
+import { cpuPlan } from './bot.js';
+
+section('Bot: each difficulty returns legal actions from a mid-game state');
+{
+  for (const difficulty of ['easy', 'normal', 'hard']) {
+    let g = createGame(['a', 'b', 'c'], { a: 'A', b: 'B', c: 'C' });
+    // Complete tee-off for everyone.
+    for (const id of ['a', 'b', 'c']) {
+      let done = 0;
+      while (done < 2) {
+        const plan = cpuPlan(g, id, difficulty);
+        assert(plan.length > 0, `${difficulty} returns tee-off plan for ${id}`);
+        for (const act of plan) {
+          const res = applyAction(g, g.turn, act);
+          assert(res.ok, `${difficulty} tee-off action legal: ${JSON.stringify(act)} → ${res.error || 'ok'}`);
+          g = res.state;
+        }
+        done = g.teeOffFlips[id] || 0;
+      }
+    }
+    // Play ~20 turns via the bot at this difficulty and ensure every
+    // action is legal. Doesn't verify cleverness, just legality.
+    for (let step = 0; step < 40 && !g.holeEnded; step += 1) {
+      const actor = g.turn;
+      const plan = cpuPlan(g, actor, difficulty);
+      if (plan.length === 0) break;
+      for (const act of plan) {
+        const res = applyAction(g, actor, act);
+        assert(res.ok, `${difficulty} mid-game action legal: ${JSON.stringify(act)} → ${res.error || 'ok'}`);
+        if (!res.ok) { g = null; break; }
+        g = res.state;
+      }
+      if (!g) break;
+    }
+  }
+}
+
 console.log(`\n${passed} passed, ${failed} failed.`);
 if (failed > 0) process.exit(1);
