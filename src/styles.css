@@ -2096,101 +2096,108 @@ select { width: auto; padding: 6px 8px; }
   justify-content: center;
 }
 
-/* Card face. Base styling imitates a physical card: cream stock with a
-   faint linen texture, thin dark border, slight top-highlight for a
-   sense of depth. Each value band gets its own color on the number and
-   a soft color wash on the corners so the card "belongs" to its band
-   (like the colored pips on the real Play Nine cards). */
+/* Card faces modeled on the real Play Nine cards: a crisp white
+   border around a green "sky + hill" header strip with a small golf
+   flag, and a colored body with a big bold black number centered.
+   Top-left and bottom-right corners also carry a small number so the
+   card reads from either orientation, like classic playing cards. */
 .p9-card {
   position: relative;
   width: var(--p9-card-w, 68px);
   height: var(--p9-card-h, 96px);
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.45);
-  background:
-    linear-gradient(180deg, #fffef7 0%, #f3efdc 100%);
+  border-radius: 10px;
+  border: 2px solid #ffffff;
+  background: #bfdbfe;
   color: #111;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-family: "Lilita One", "Arial Black", sans-serif;
   user-select: none;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
 }
 .p9-card.clickable { cursor: pointer; transition: transform 120ms, box-shadow 120ms; }
-.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 5px 8px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7); }
+.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 5px 8px rgba(0, 0, 0, 0.55); }
+
+/* Green "sky + hill" header strip with a flag. Top ~32% of the card.
+   A soft lower shadow marks the horizon line between strip and body. */
+.p9-card:not(.face-down):not(.empty)::before {
+  content: '⛳';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32%;
+  background:
+    radial-gradient(ellipse 140% 140% at 50% 110%, #16a34a 0%, #22c55e 55%, #4ade80 100%);
+  border-bottom: 1.5px solid #166534;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--p9-card-h, 96px) * 0.18);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+  z-index: 1;
+}
 
 .p9-card .p9-card-center {
-  font-size: 30px;
-  font-weight: 400;
+  position: absolute;
+  top: 66%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: calc(var(--p9-card-w, 68px) * 0.62);
+  font-weight: 900;
+  color: #111;
   line-height: 1;
-  z-index: 2;
+  letter-spacing: -0.02em;
+  z-index: 3;
 }
 .p9-card .p9-card-corner {
   position: absolute;
-  font-size: 14px;
+  font-size: calc(var(--p9-card-w, 68px) * 0.22);
+  font-weight: 800;
+  color: #111;
   line-height: 1;
-  font-weight: 400;
-  z-index: 2;
+  z-index: 3;
 }
-.p9-card .p9-card-corner.top-left { top: 6px; left: 7px; }
-.p9-card .p9-card-corner.bottom-right { bottom: 6px; right: 7px; transform: rotate(180deg); }
+/* Corner numbers sit in the body area (below the green strip), not on
+   top of it — green strip is ~32% tall so corners start just below. */
+.p9-card .p9-card-corner.top-left { top: 36%; left: 7%; }
+.p9-card .p9-card-corner.bottom-right { bottom: 7%; right: 7%; transform: rotate(180deg); }
 
-/* Face-down back: darker green stock with a tighter cross-hatch and a
-   subtle vignette so the pattern reads as "back of a card", not noise. */
+/* Body tint varies by value band so quick visual parsing is still
+   possible, but the card-level design (white border, green strip,
+   bold black number) is constant — matches the printed cards. */
+.p9-card.tone-h1o   { background: #fde68a; }
+.p9-card.tone-zero  { background: #e5e7eb; }
+.p9-card.tone-low   { background: #bbf7d0; }
+.p9-card.tone-mid   { background: #bfdbfe; }
+.p9-card.tone-high  { background: #fecaca; }
+
+/* Face-down back: orange sunset over green hills with a soft flag
+   silhouette in the middle. No header strip or corner numbers. */
 .p9-card.face-down {
   background:
-    radial-gradient(ellipse at center, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.25) 100%),
-    repeating-linear-gradient(45deg,  #2f5a48 0 5px, #1e3a2f 5px 10px),
-    repeating-linear-gradient(-45deg, #2f5a48 0 5px, #1e3a2f 5px 10px);
-  background-blend-mode: overlay, normal, normal;
-  border-color: #0d2018;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0 0 2px rgba(0, 0, 0, 0.15);
+    linear-gradient(
+      180deg,
+      #fbbf24 0%,
+      #f59e0b 35%,
+      #84cc16 48%,
+      #4ade80 58%,
+      #16a34a 100%
+    );
+  border-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.p9-card.face-down::before {
+  content: '⛳';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: calc(var(--p9-card-h, 96px) * 0.42);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+  opacity: 0.85;
 }
 .p9-card.face-down .p9-card-center,
 .p9-card.face-down .p9-card-corner { display: none; }
-
-/* Color bands — stronger, more card-like. Corners get a faint
-   matching wash via a radial gradient on ::before so the number
-   sits on a pennant-ish background. */
-.p9-card.tone-h1o   { color: #92400e; }
-.p9-card.tone-zero  { color: #374151; }
-.p9-card.tone-low   { color: #15803d; }
-.p9-card.tone-mid   { color: #1d4ed8; }
-.p9-card.tone-high  { color: #b91c1c; }
-
-.p9-card.tone-h1o::before,
-.p9-card.tone-low::before,
-.p9-card.tone-mid::before,
-.p9-card.tone-high::before,
-.p9-card.tone-zero::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-  opacity: 0.45;
-}
-.p9-card.tone-h1o::before  { background: radial-gradient(circle at 50% 50%, #fde68a 0%, transparent 70%); }
-.p9-card.tone-low::before  { background: radial-gradient(circle at 50% 50%, #bbf7d0 0%, transparent 70%); }
-.p9-card.tone-mid::before  { background: radial-gradient(circle at 50% 50%, #bfdbfe 0%, transparent 70%); }
-.p9-card.tone-high::before { background: radial-gradient(circle at 50% 50%, #fecaca 0%, transparent 70%); }
-.p9-card.tone-zero::before { background: radial-gradient(circle at 50% 50%, #e5e7eb 0%, transparent 70%); }
-
-/* Hole-in-One gets a golf-flag watermark behind the -5. Positioned
-   so it sits just right of center without crowding the number. */
-.p9-card.tone-h1o::after {
-  content: '⛳';
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: calc(var(--p9-card-h, 96px) * 0.28);
-  opacity: 0.28;
-  z-index: 1;
-  filter: saturate(0.7);
-}
 
 .p9-card.selected {
   outline: 3px solid var(--gold, #f59e0b);
