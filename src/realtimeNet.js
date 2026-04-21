@@ -105,9 +105,17 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
       if (destroyed) return;
       onChat?.(payload.payload);
     })
-    .subscribe((status) => {
+    .subscribe((status, err) => {
+      // eslint-disable-next-line no-console
+      console.log('[realtime]', roomCode, 'status=', status, err || '');
       if (status === 'SUBSCRIBED') onStatus?.({ kind: 'open', peerId: myPlayerId });
-      else if (status === 'CHANNEL_ERROR') onStatus?.({ kind: 'error', type: 'channel', message: 'Realtime channel error' });
+      else if (status === 'CHANNEL_ERROR') {
+        onStatus?.({
+          kind: 'error',
+          type: 'channel',
+          message: err?.message || 'Realtime channel error (check rooms is in supabase_realtime publication)',
+        });
+      }
       else if (status === 'TIMED_OUT') onStatus?.({ kind: 'disconnected' });
       else if (status === 'CLOSED') onStatus?.({ kind: 'closed' });
     });
