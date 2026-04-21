@@ -544,7 +544,15 @@ export default function App() {
             <div className="card-panel">
               <div style={{ fontSize: 13, color: 'var(--muted)', alignSelf: 'flex-start' }}>Open rooms</div>
               {openRooms.map((r) => {
-                const full = r.player_count >= r.max_players;
+                // Lobby rooms: block the tile if the room is at max
+                // capacity. Started rooms stay clickable no matter the
+                // count — the realtimeNet joiner will reclaim the
+                // player's seat by profileId and bounce strangers with
+                // "game already in progress".
+                const full = !r.started && r.player_count >= r.max_players;
+                const rightLabel = r.started
+                  ? 'in progress'
+                  : full ? 'full' : `${r.player_count}/${r.max_players}`;
                 return (
                   <button
                     key={r.code}
@@ -556,8 +564,12 @@ export default function App() {
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       <strong>{r.host_name}</strong> · {r.code}
                     </span>
-                    <span style={{ color: 'var(--muted)', fontSize: 13, flexShrink: 0 }}>
-                      {full ? 'full' : `${r.player_count}/${r.max_players}`}
+                    <span style={{
+                      color: r.started ? 'var(--accent-2, var(--gold))' : 'var(--muted)',
+                      fontSize: 13,
+                      flexShrink: 0,
+                    }}>
+                      {rightLabel}
                     </span>
                   </button>
                 );

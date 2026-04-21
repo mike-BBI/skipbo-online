@@ -57,10 +57,19 @@ export function subscribeOpenRooms(onRooms, gameType = 'skipbo') {
   let rooms = new Map();
   const emit = () => {
     const cutoff = Date.now() - STALE_MS;
+    // Keep started rooms visible too — they're how an accidentally-
+    // closed player finds their way back. Our realtime joiner checks
+    // profileId on join and either reclaims the existing seat or
+    // rejects "game already in progress" for strangers.
     const list = [...rooms.values()]
       .filter((r) => (r.game_type || 'skipbo') === gameType)
-      .filter((r) => !r.started && new Date(r.updated_at).getTime() >= cutoff)
-      .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      .filter((r) => new Date(r.updated_at).getTime() >= cutoff)
+      .sort((a, b) => {
+        // Active rooms first (not started), then started rooms.
+        if (!a.started && b.started) return -1;
+        if (a.started && !b.started) return 1;
+        return new Date(b.updated_at) - new Date(a.updated_at);
+      });
     onRooms(list);
   };
 
