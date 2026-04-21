@@ -2013,16 +2013,15 @@ select { width: auto; padding: 6px 8px; }
 
 .p9-opponents {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
 }
 .p9-opponent {
   flex-shrink: 0;
-  min-width: 130px;
   background: var(--panel);
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 10px;
+  padding: 10px 12px;
   border: 1px solid transparent;
   transition: border-color 180ms, background 180ms;
 }
@@ -2033,21 +2032,22 @@ select { width: auto; padding: 6px 8px; }
 .p9-opponent .p9-opp-header {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  margin-bottom: 4px;
+  font-size: 13px;
+  margin-bottom: 6px;
+  gap: 10px;
 }
 .p9-opponent .p9-opp-name { font-weight: 600; color: var(--text); }
 .p9-opponent .p9-opp-score { color: var(--muted); }
-.p9-opponent .p9-grid { --p9-card-w: 28px; --p9-card-h: 38px; gap: 3px; }
-.p9-opponent .p9-card { font-size: 14px; }
-.p9-opponent .p9-card .p9-card-corner { font-size: 8px; }
+.p9-opponent .p9-grid { --p9-card-w: 40px; --p9-card-h: 56px; gap: 4px; }
+.p9-opponent .p9-card .p9-card-center { font-size: 18px; }
+.p9-opponent .p9-card .p9-card-corner { font-size: 10px; }
 
 .p9-center {
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 24px;
-  padding: 8px 0;
+  padding: 12px 0;
 }
 .p9-pile-label { font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 4px; letter-spacing: 1px; text-transform: uppercase; }
 .p9-pile { display: flex; flex-direction: column; align-items: center; }
@@ -2069,11 +2069,11 @@ select { width: auto; padding: 6px 8px; }
 
 .p9-my-grid-wrap {
   background: var(--panel);
-  border-radius: 10px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 14px 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 .p9-my-grid-wrap.active {
   box-shadow: 0 0 0 2px var(--gold, #f59e0b);
@@ -2081,28 +2081,34 @@ select { width: auto; padding: 6px 8px; }
 .p9-my-grid-wrap .p9-my-score-row {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 .p9-my-grid-wrap .p9-my-score-row strong { color: var(--text); }
 
 .p9-grid {
-  --p9-card-w: 52px;
-  --p9-card-h: 72px;
+  --p9-card-w: 68px;
+  --p9-card-h: 96px;
   display: grid;
   grid-template-columns: repeat(4, var(--p9-card-w));
   grid-template-rows: repeat(2, var(--p9-card-h));
-  gap: 6px;
+  gap: 8px;
   justify-content: center;
 }
 
+/* Card face. Base styling imitates a physical card: cream stock with a
+   faint linen texture, thin dark border, slight top-highlight for a
+   sense of depth. Each value band gets its own color on the number and
+   a soft color wash on the corners so the card "belongs" to its band
+   (like the colored pips on the real Play Nine cards). */
 .p9-card {
   position: relative;
-  width: var(--p9-card-w, 52px);
-  height: var(--p9-card-h, 72px);
-  border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.4);
-  background: #fafaf0;
+  width: var(--p9-card-w, 68px);
+  height: var(--p9-card-h, 96px);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  background:
+    linear-gradient(180deg, #fffef7 0%, #f3efdc 100%);
   color: #111;
   display: flex;
   align-items: center;
@@ -2110,40 +2116,81 @@ select { width: auto; padding: 6px 8px; }
   font-family: "Lilita One", "Arial Black", sans-serif;
   user-select: none;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 .p9-card.clickable { cursor: pointer; transition: transform 120ms, box-shadow 120ms; }
-.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5); }
+.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 5px 8px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7); }
 
 .p9-card .p9-card-center {
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 400;
   line-height: 1;
+  z-index: 2;
 }
 .p9-card .p9-card-corner {
   position: absolute;
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1;
   font-weight: 400;
+  z-index: 2;
 }
-.p9-card .p9-card-corner.top-left { top: 4px; left: 5px; }
-.p9-card .p9-card-corner.bottom-right { bottom: 4px; right: 5px; transform: rotate(180deg); }
+.p9-card .p9-card-corner.top-left { top: 6px; left: 7px; }
+.p9-card .p9-card-corner.bottom-right { bottom: 6px; right: 7px; transform: rotate(180deg); }
 
+/* Face-down back: darker green stock with a tighter cross-hatch and a
+   subtle vignette so the pattern reads as "back of a card", not noise. */
 .p9-card.face-down {
-  background: #1e3a2f;
-  background-image:
-    repeating-linear-gradient(45deg, #264d3e 0 6px, #1e3a2f 6px 12px);
+  background:
+    radial-gradient(ellipse at center, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.25) 100%),
+    repeating-linear-gradient(45deg,  #2f5a48 0 5px, #1e3a2f 5px 10px),
+    repeating-linear-gradient(-45deg, #2f5a48 0 5px, #1e3a2f 5px 10px);
+  background-blend-mode: overlay, normal, normal;
   border-color: #0d2018;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0 0 2px rgba(0, 0, 0, 0.15);
 }
 .p9-card.face-down .p9-card-center,
 .p9-card.face-down .p9-card-corner { display: none; }
 
-/* Color bands by value — subtle fill + stronger number color. */
-.p9-card.tone-h1o   { background: #fef3c7; color: #a16207; }
-.p9-card.tone-zero  { background: #fafaf0; color: #374151; }
-.p9-card.tone-low   { background: #dcfce7; color: #166534; }
-.p9-card.tone-mid   { background: #dbeafe; color: #1e3a8a; }
-.p9-card.tone-high  { background: #fee2e2; color: #991b1b; }
+/* Color bands — stronger, more card-like. Corners get a faint
+   matching wash via a radial gradient on ::before so the number
+   sits on a pennant-ish background. */
+.p9-card.tone-h1o   { color: #92400e; }
+.p9-card.tone-zero  { color: #374151; }
+.p9-card.tone-low   { color: #15803d; }
+.p9-card.tone-mid   { color: #1d4ed8; }
+.p9-card.tone-high  { color: #b91c1c; }
+
+.p9-card.tone-h1o::before,
+.p9-card.tone-low::before,
+.p9-card.tone-mid::before,
+.p9-card.tone-high::before,
+.p9-card.tone-zero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.45;
+}
+.p9-card.tone-h1o::before  { background: radial-gradient(circle at 50% 50%, #fde68a 0%, transparent 70%); }
+.p9-card.tone-low::before  { background: radial-gradient(circle at 50% 50%, #bbf7d0 0%, transparent 70%); }
+.p9-card.tone-mid::before  { background: radial-gradient(circle at 50% 50%, #bfdbfe 0%, transparent 70%); }
+.p9-card.tone-high::before { background: radial-gradient(circle at 50% 50%, #fecaca 0%, transparent 70%); }
+.p9-card.tone-zero::before { background: radial-gradient(circle at 50% 50%, #e5e7eb 0%, transparent 70%); }
+
+/* Hole-in-One gets a golf-flag watermark behind the -5. Positioned
+   so it sits just right of center without crowding the number. */
+.p9-card.tone-h1o::after {
+  content: '⛳';
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: calc(var(--p9-card-h, 96px) * 0.28);
+  opacity: 0.28;
+  z-index: 1;
+  filter: saturate(0.7);
+}
 
 .p9-card.selected {
   outline: 3px solid var(--gold, #f59e0b);
@@ -2286,11 +2333,13 @@ select { width: auto; padding: 6px 8px; }
   font-size: 11px;
 }
 
-@media (max-width: 500px) {
-  .p9-grid { --p9-card-w: 44px; --p9-card-h: 62px; }
-  .p9-card .p9-card-center { font-size: 18px; }
-  .p9-opponent { min-width: 110px; }
-  .p9-opponent .p9-grid { --p9-card-w: 22px; --p9-card-h: 32px; gap: 2px; }
-  .p9-opponent .p9-card { font-size: 11px; }
+@media (max-width: 520px) {
+  .p9-grid { --p9-card-w: 60px; --p9-card-h: 86px; gap: 7px; }
+  .p9-card .p9-card-center { font-size: 26px; }
+  .p9-card .p9-card-corner { font-size: 12px; }
+  .p9-opponent { padding: 8px 10px; }
+  .p9-opponent .p9-grid { --p9-card-w: 34px; --p9-card-h: 48px; gap: 3px; }
+  .p9-opponent .p9-card .p9-card-center { font-size: 15px; }
+  .p9-opponent .p9-card .p9-card-corner { font-size: 9px; }
 }
 
