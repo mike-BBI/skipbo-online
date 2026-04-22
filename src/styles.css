@@ -2110,10 +2110,11 @@ select { width: auto; padding: 6px 8px; }
   border-radius: 10px;
   border: 2.5px solid #111;
   background:
-    /* hill: bottom ellipse rising into center as a gentle hump */
-    radial-gradient(ellipse 130% 48% at 50% 115%, #3ec95b 0%, #3ec95b 55%, transparent 56%),
-    /* thin flat strip so the hill has a green base at the bottom edge */
-    linear-gradient(180deg, transparent 84%, #3ec95b 84%),
+    /* rolling hill: a pronounced dome centered below the card. Taller
+       vertical radius + tighter horizontal spread makes the curve read
+       as a hill (not a flat horizon strip). Covers the full bottom
+       of the card, sloping up in the middle. */
+    radial-gradient(ellipse 130% 55% at 50% 112%, #3ec95b 0%, #3ec95b 70%, transparent 71%),
     /* sky: blue gradient */
     linear-gradient(180deg, #7dd3fc 0%, #bae6fd 60%, #e0f2fe 100%);
   background-repeat: no-repeat;
@@ -2164,9 +2165,8 @@ select { width: auto; padding: 6px 8px; }
    ::before and ::after. */
 .p9-card.face-down {
   background:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 140'><ellipse cx='50' cy='104' rx='11' ry='2.6' fill='%23000' fill-opacity='0.28'/><rect x='48.5' y='40' width='3' height='62' rx='1.2' fill='%23ffffff' stroke='%23222' stroke-width='0.7'/><circle cx='50' cy='39' r='3' fill='%23ffffff' stroke='%23222' stroke-width='0.7'/><rect x='51.5' y='42' width='26' height='18' rx='1.5' fill='%234ade80' stroke='%23166534' stroke-width='1.2'/><rect x='51.5' y='51' width='26' height='9' rx='1.5' fill='%23000' fill-opacity='0.12'/></svg>") center 30% / auto 62% no-repeat,
-    radial-gradient(ellipse 130% 48% at 50% 115%, #3ec95b 0%, #3ec95b 55%, transparent 56%),
-    linear-gradient(180deg, transparent 84%, #3ec95b 84%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 68 96' preserveAspectRatio='none'><ellipse cx='34' cy='71' rx='7' ry='1.5' fill='%23000' fill-opacity='0.28'/><rect x='33' y='37' width='2.2' height='33' rx='0.8' fill='%23ffffff' stroke='%23222' stroke-width='0.55'/><circle cx='34' cy='36' r='2' fill='%23ffffff' stroke='%23222' stroke-width='0.55'/><rect x='35' y='39' width='16.5' height='11' rx='1' fill='%234ade80' stroke='%23166534' stroke-width='0.9'/><rect x='35' y='44.5' width='16.5' height='5.5' rx='1' fill='%23000' fill-opacity='0.12'/></svg>") 0 0 / 100% 100% no-repeat,
+    radial-gradient(ellipse 130% 55% at 50% 112%, #3ec95b 0%, #3ec95b 70%, transparent 71%),
     linear-gradient(180deg, #fbbf24 0%, #fcd34d 60%, #fde68a 100%);
   background-repeat: no-repeat;
   border-color: #111;
