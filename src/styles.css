@@ -2146,10 +2146,15 @@ select { width: auto; padding: 6px 8px; }
 .p9-card .p9-card-corner { display: none; }
 
 /* Value-based tone classes retired — all face-up cards look the
-   same on the real cards. Keep empty selectors as no-ops so the
-   component's class list stays consistent. */
-.p9-card.tone-h1o, .p9-card.tone-zero, .p9-card.tone-low,
+   same on the real cards. The -5 Hole-in-One is the one exception:
+   its number is printed in red on the real cards to call out the
+   negative value at a glance. */
+.p9-card.tone-zero, .p9-card.tone-low,
 .p9-card.tone-mid, .p9-card.tone-high { /* no-op */ }
+.p9-card.tone-h1o .p9-card-center {
+  color: #dc2626;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
 
 /* Face-down: yellow-to-orange sunset sky, green hill, flag + cup. */
 .p9-card.face-down {
@@ -2177,15 +2182,18 @@ select { width: auto; padding: 6px 8px; }
   z-index: 2;
 }
 .p9-card.face-down::after {
+  /* Square flag on a rectangular stock — positioned so its left edge
+     sits flush against the pole and its top aligns near the top of
+     the pole. Width + height scale with the card so it reads the
+     same at both the player and opponent sizes. */
   content: '';
   position: absolute;
   left: 50%;
-  bottom: calc(28% + 22%);
-  width: 0;
-  height: 0;
-  border-style: solid;
-  border-width: 6px 0 6px 11px;
-  border-color: transparent transparent transparent #4ade80;
+  bottom: calc(28% + 18%);
+  width: calc(var(--p9-card-w, 68px) * 0.20);
+  height: calc(var(--p9-card-w, 68px) * 0.16);
+  background: #4ade80;
+  border: 1px solid #166534;
   transform: translateX(0);
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.2));
   z-index: 2;
