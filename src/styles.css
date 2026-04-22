@@ -2096,108 +2096,100 @@ select { width: auto; padding: 6px 8px; }
   justify-content: center;
 }
 
-/* Card faces modeled on the real Play Nine cards: a crisp white
-   border around a green "sky + hill" header strip with a small golf
-   flag, and a colored body with a big bold black number centered.
-   Top-left and bottom-right corners also carry a small number so the
-   card reads from either orientation, like classic playing cards. */
+/* Card faces modeled directly on the physical Play Nine cards:
+   thick black outer stroke, white inner bezel, blue "sky" top
+   with a curved green "hill" rising from the bottom, and a big
+   hand-drawn (Kalam Bold) black number centered on the sky. All
+   face-up cards look the same regardless of value — the number is
+   what you read. Face-down: same layout but yellow/orange sunset
+   sky + green hill + golf flag. */
 .p9-card {
   position: relative;
   width: var(--p9-card-w, 68px);
   height: var(--p9-card-h, 96px);
   border-radius: 10px;
-  border: 2px solid #ffffff;
-  background: #bfdbfe;
+  border: 2.5px solid #111;
+  background:
+    /* hill: bottom ellipse rising into center as a gentle hump */
+    radial-gradient(ellipse 130% 48% at 50% 115%, #3ec95b 0%, #3ec95b 55%, transparent 56%),
+    /* thin flat strip so the hill has a green base at the bottom edge */
+    linear-gradient(180deg, transparent 84%, #3ec95b 84%),
+    /* sky: blue gradient */
+    linear-gradient(180deg, #7dd3fc 0%, #bae6fd 60%, #e0f2fe 100%);
+  background-repeat: no-repeat;
   color: #111;
-  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-family: "Kalam", "Comic Sans MS", system-ui, sans-serif;
   user-select: none;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4),
+              inset 0 0 0 2px #ffffff;
 }
 .p9-card.clickable { cursor: pointer; transition: transform 120ms, box-shadow 120ms; }
-.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 5px 8px rgba(0, 0, 0, 0.55); }
+.p9-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 5px 8px rgba(0, 0, 0, 0.55), inset 0 0 0 2px #ffffff; }
 
-/* Green "sky + hill" header strip with a flag. Top ~32% of the card.
-   A soft lower shadow marks the horizon line between strip and body. */
-.p9-card:not(.face-down):not(.empty)::before {
-  content: '⛳';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 32%;
-  background:
-    radial-gradient(ellipse 140% 140% at 50% 110%, #16a34a 0%, #22c55e 55%, #4ade80 100%);
-  border-bottom: 1.5px solid #166534;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(var(--p9-card-h, 96px) * 0.18);
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
-  z-index: 1;
-}
-
+/* The big centered number. Sits on the blue sky, above the green hill. */
 .p9-card .p9-card-center {
   position: absolute;
-  top: 66%;
+  top: 44%;
   left: 50%;
   transform: translate(-50%, -50%);
+  font-family: "Kalam", "Comic Sans MS", system-ui, sans-serif;
+  font-weight: 700;
   font-size: calc(var(--p9-card-w, 68px) * 0.62);
-  font-weight: 900;
   color: #111;
   line-height: 1;
   letter-spacing: -0.02em;
   z-index: 3;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
 }
-.p9-card .p9-card-corner {
-  position: absolute;
-  font-size: calc(var(--p9-card-w, 68px) * 0.22);
-  font-weight: 800;
-  color: #111;
-  line-height: 1;
-  z-index: 3;
-}
-/* Corner numbers sit in the body area (below the green strip), not on
-   top of it — green strip is ~32% tall so corners start just below. */
-.p9-card .p9-card-corner.top-left { top: 36%; left: 7%; }
-.p9-card .p9-card-corner.bottom-right { bottom: 7%; right: 7%; transform: rotate(180deg); }
+/* Corner numbers retired — real cards have just the one big number. */
+.p9-card .p9-card-corner { display: none; }
 
-/* Body tint varies by value band so quick visual parsing is still
-   possible, but the card-level design (white border, green strip,
-   bold black number) is constant — matches the printed cards. */
-.p9-card.tone-h1o   { background: #fde68a; }
-.p9-card.tone-zero  { background: #e5e7eb; }
-.p9-card.tone-low   { background: #bbf7d0; }
-.p9-card.tone-mid   { background: #bfdbfe; }
-.p9-card.tone-high  { background: #fecaca; }
+/* Value-based tone classes retired — all face-up cards look the
+   same on the real cards. Keep empty selectors as no-ops so the
+   component's class list stays consistent. */
+.p9-card.tone-h1o, .p9-card.tone-zero, .p9-card.tone-low,
+.p9-card.tone-mid, .p9-card.tone-high { /* no-op */ }
 
-/* Face-down back: orange sunset over green hills with a soft flag
-   silhouette in the middle. No header strip or corner numbers. */
+/* Face-down: yellow-to-orange sunset sky, green hill, flag + cup. */
 .p9-card.face-down {
   background:
-    linear-gradient(
-      180deg,
-      #fbbf24 0%,
-      #f59e0b 35%,
-      #84cc16 48%,
-      #4ade80 58%,
-      #16a34a 100%
-    );
-  border-color: #ffffff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    radial-gradient(ellipse 130% 48% at 50% 115%, #3ec95b 0%, #3ec95b 55%, transparent 56%),
+    linear-gradient(180deg, transparent 84%, #3ec95b 84%),
+    linear-gradient(180deg, #fbbf24 0%, #fcd34d 60%, #fde68a 100%);
+  background-repeat: no-repeat;
+  border-color: #111;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4),
+              inset 0 0 0 2px #ffffff;
 }
 .p9-card.face-down::before {
-  content: '⛳';
+  /* golf flag: pole + triangular flag (pure CSS so we don't depend on
+     emoji font rendering). Positioned above the hill's peak. */
+  content: '';
   position: absolute;
-  top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: calc(var(--p9-card-h, 96px) * 0.42);
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
-  opacity: 0.85;
+  bottom: 28%;
+  width: 2px;
+  height: 32%;
+  background: #ffffff;
+  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.25);
+  transform: translateX(-50%);
+  z-index: 2;
 }
-.p9-card.face-down .p9-card-center,
-.p9-card.face-down .p9-card-corner { display: none; }
+.p9-card.face-down::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(28% + 22%);
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 6px 0 6px 11px;
+  border-color: transparent transparent transparent #4ade80;
+  transform: translateX(0);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.2));
+  z-index: 2;
+}
 
 .p9-card.selected {
   outline: 3px solid var(--gold, #f59e0b);

@@ -51,11 +51,7 @@ export function Card({
       aria-label={faceDown ? 'face-down card' : `card ${label}`}
     >
       {!faceDown && card != null && (
-        <>
-          <span className="p9-card-corner top-left">{label}</span>
-          <span className="p9-card-center">{label}</span>
-          <span className="p9-card-corner bottom-right">{label}</span>
-        </>
+        <span className="p9-card-center">{label}</span>
       )}
     </div>
   );
