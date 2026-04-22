@@ -2156,9 +2156,15 @@ select { width: auto; padding: 6px 8px; }
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 
-/* Face-down: yellow-to-orange sunset sky, green hill, flag + cup. */
+/* Face-down: yellow-to-orange sunset sky, green hill, and a polished
+   inline-SVG flag (outlined pole with a knob, square pennant with a
+   soft shade and a ground shadow). Using SVG rather than a pair of
+   pseudo-element rectangles gives the flag the outline, highlight,
+   and cup-shadow details that would be fussy to coordinate across
+   ::before and ::after. */
 .p9-card.face-down {
   background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 140'><ellipse cx='50' cy='104' rx='11' ry='2.6' fill='%23000' fill-opacity='0.28'/><rect x='48.5' y='40' width='3' height='62' rx='1.2' fill='%23ffffff' stroke='%23222' stroke-width='0.7'/><circle cx='50' cy='39' r='3' fill='%23ffffff' stroke='%23222' stroke-width='0.7'/><rect x='51.5' y='42' width='26' height='18' rx='1.5' fill='%234ade80' stroke='%23166534' stroke-width='1.2'/><rect x='51.5' y='51' width='26' height='9' rx='1.5' fill='%23000' fill-opacity='0.12'/></svg>") center 30% / auto 62% no-repeat,
     radial-gradient(ellipse 130% 48% at 50% 115%, #3ec95b 0%, #3ec95b 55%, transparent 56%),
     linear-gradient(180deg, transparent 84%, #3ec95b 84%),
     linear-gradient(180deg, #fbbf24 0%, #fcd34d 60%, #fde68a 100%);
@@ -2167,37 +2173,8 @@ select { width: auto; padding: 6px 8px; }
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4),
               inset 0 0 0 2px #ffffff;
 }
-.p9-card.face-down::before {
-  /* golf flag: pole + triangular flag (pure CSS so we don't depend on
-     emoji font rendering). Positioned above the hill's peak. */
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 28%;
-  width: 2px;
-  height: 32%;
-  background: #ffffff;
-  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.25);
-  transform: translateX(-50%);
-  z-index: 2;
-}
-.p9-card.face-down::after {
-  /* Square flag on a rectangular stock — positioned so its left edge
-     sits flush against the pole and its top aligns near the top of
-     the pole. Width + height scale with the card so it reads the
-     same at both the player and opponent sizes. */
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: calc(28% + 18%);
-  width: calc(var(--p9-card-w, 68px) * 0.20);
-  height: calc(var(--p9-card-w, 68px) * 0.16);
-  background: #4ade80;
-  border: 1px solid #166534;
-  transform: translateX(0);
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.2));
-  z-index: 2;
-}
+.p9-card.face-down::before,
+.p9-card.face-down::after { display: none; }
 
 .p9-card.selected {
   outline: 3px solid var(--gold, #f59e0b);
