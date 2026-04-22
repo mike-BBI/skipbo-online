@@ -55,6 +55,13 @@ function stableId(profileId) {
 // fly before UI has rendered the previous state.
 const BOT_STAGGER_MS = 1500;
 
+// How long an open undo vote stays live. Matches the legacy net.js
+// constant. Any voter who hasn't voted by the deadline is counted as
+// YES (the house rule: silent = no objection). Actual finalization
+// is triggered by whichever client first notices the deadline is
+// past (see maybeFinalizeUndoVote in attachRoom).
+const UNDO_VOTE_MS = 15_000;
+
 function nowIso() { return new Date().toISOString(); }
 
 async function fetchRoom(code) {
@@ -158,8 +165,24 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
     }
     currentRow = row;
     if (row.lobby) onLobby?.(row.lobby);
-    if (row.state) onState?.(row.state);
+    if (row.state) {
+      // Expose undoAvailable/lastActor to the UI, derived from the
+      // undoSnapshot meta stashed inside state. undoVote is passed
+      // through as-is.
+      const snap = row.state.undoSnapshot;
+      const payload = {
+        ...row.state,
+        undoAvailable: !!snap,
+        lastActor: snap?.actor || null,
+      };
+      onState?.(payload);
+    }
     scheduleBotIfNeeded();
+    // Any time state moves, also check if a pending undo vote is
+    // fully voted or has hit its deadline. Finalization uses the same
+    // optimistic-concurrency pattern, so multiple clients racing to
+    // finalize collapse to a single winner.
+    maybeFinalizeUndoVote().catch(() => {});
   }
 
   // Poll the room row as the primary sync mechanism. Realtime would be
@@ -215,15 +238,52 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
     return { ok: false, error: 'Could not apply change — please retry.' };
   }
 
+  // Strip undo meta before running the engine — the engine only
+  // knows about its own state shape. Re-attach snapshot + cleared
+  // vote before writing back.
+  function pureState(raw) {
+    if (!raw) return raw;
+    const { undoSnapshot, undoVote, ...rest } = raw;
+    return rest;
+  }
+
   async function submitAction(playerId, action) {
     if (!currentRow) return { ok: false, error: 'Room not ready.' };
     if (!currentRow.state) return { ok: false, error: 'Game has not started.' };
     const expectedVersion = currentRow.version;
-    const res = game.applyAction(currentRow.state, playerId, action);
+
+    // Engine-level undo (Play Nine dispatches this via submitAction).
+    // The engine reads state.undoSnapshot itself and restores from it,
+    // so pass the full state through without stripping, and don't
+    // wrap the result — the engine has already zeroed the snapshot to
+    // prevent chained undos. Skip-Bo's vote-based undo does NOT go
+    // through this path (it uses requestUndo / castUndoVote directly).
+    if (action?.type === 'undo') {
+      const res = game.applyAction(currentRow.state, playerId, action);
+      if (!res.ok) return res;
+      const updated = await updateRoomAtomic(
+        roomCode,
+        { state: res.state, version: expectedVersion + 1 },
+        expectedVersion,
+      );
+      if (!updated) { await refetch(); return { ok: false, error: 'stale-state' }; }
+      applyRow(updated);
+      return { ok: true };
+    }
+
+    const pre = pureState(currentRow.state);
+    const res = game.applyAction(pre, playerId, action);
     if (!res.ok) return res;
+    const newState = {
+      ...res.state,
+      undoSnapshot: { state: pre, actor: playerId },
+      // Any in-flight undo vote was for a previous action; the new
+      // action invalidates it.
+      undoVote: null,
+    };
     const updated = await updateRoomAtomic(
       roomCode,
-      { state: res.state, version: expectedVersion + 1 },
+      { state: newState, version: expectedVersion + 1 },
       expectedVersion,
     );
     if (!updated) {
@@ -234,12 +294,137 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
     return { ok: true };
   }
 
+  // Undo flow — ported from the legacy PeerJS net.js. The undo state
+  // (snapshot + in-flight vote) travels as two extra keys on the
+  // state jsonb so every client can see it via the same sync path.
+  // All writes go through updateRoomAtomic with the current version
+  // as the expected version, so simultaneous votes collapse to one
+  // winner per round of optimistic concurrency.
+  async function handleUndoRequest(playerId) {
+    if (!currentRow?.state) return { ok: false, error: 'Room not ready.' };
+    const state = currentRow.state;
+    if (state.winner) return { ok: false, error: 'Match is over.' };
+    const snap = state.undoSnapshot;
+    if (!snap || snap.actor !== playerId) {
+      return { ok: false, error: 'No undoable action right now.' };
+    }
+    if (state.undoVote) return { ok: false, error: 'A vote is already in progress.' };
+    const lobby = currentRow.lobby;
+    const voters = (lobby?.players || [])
+      .filter((p) => p.id !== playerId)
+      .map((p) => p.id);
+
+    // Solo game (or only CPUs left as voters) — skip the vote and
+    // just restore the snapshot directly.
+    if (voters.length === 0) {
+      const restored = { ...snap.state, undoSnapshot: null, undoVote: null };
+      const updated = await updateRoomAtomic(
+        roomCode,
+        { state: restored, version: (currentRow.version || 0) + 1 },
+        currentRow.version,
+      );
+      if (!updated) { await refetch(); return { ok: false, error: 'stale-state' }; }
+      applyRow(updated);
+      return { ok: true };
+    }
+
+    // Pre-fill YES for CPU voters — bots can't click "allow".
+    const votes = {};
+    for (const v of voters) {
+      const seat = lobby.players.find((p) => p.id === v);
+      if (seat?.isCpu) votes[v] = true;
+    }
+    const newVote = {
+      requester: playerId,
+      voters,
+      votes,
+      required: Math.floor(voters.length / 2) + 1,
+      deadlineAt: Date.now() + UNDO_VOTE_MS,
+    };
+    const newState = { ...state, undoVote: newVote };
+    const updated = await updateRoomAtomic(
+      roomCode,
+      { state: newState, version: (currentRow.version || 0) + 1 },
+      currentRow.version,
+    );
+    if (!updated) { await refetch(); return { ok: false, error: 'stale-state' }; }
+    applyRow(updated);
+    // If bot auto-yeses already met the threshold, finalize immediately.
+    await maybeFinalizeUndoVote();
+    return { ok: true };
+  }
+
+  async function handleUndoVote(playerId, yes) {
+    if (!currentRow?.state) return { ok: false, error: 'Room not ready.' };
+    const state = currentRow.state;
+    const vote = state.undoVote;
+    if (!vote) return { ok: false, error: 'No active vote.' };
+    if (playerId === vote.requester) return { ok: false, error: 'Cannot vote on your own undo.' };
+    if (!vote.voters.includes(playerId)) return { ok: false, error: 'You are not in this game.' };
+    if (typeof vote.votes[playerId] === 'boolean') return { ok: false, error: 'Already voted.' };
+    const nextVote = {
+      ...vote,
+      votes: { ...vote.votes, [playerId]: !!yes },
+    };
+    const newState = { ...state, undoVote: nextVote };
+    const updated = await updateRoomAtomic(
+      roomCode,
+      { state: newState, version: (currentRow.version || 0) + 1 },
+      currentRow.version,
+    );
+    if (!updated) { await refetch(); return { ok: false, error: 'stale-state' }; }
+    applyRow(updated);
+    await maybeFinalizeUndoVote();
+    return { ok: true };
+  }
+
+  async function maybeFinalizeUndoVote() {
+    const state = currentRow?.state;
+    const vote = state?.undoVote;
+    if (!vote) return;
+    const allVoted = vote.voters.every((v) => typeof vote.votes[v] === 'boolean');
+    const deadlinePassed = Date.now() >= vote.deadlineAt;
+    if (!allVoted && !deadlinePassed) return;
+    await finalizeUndoVote();
+  }
+
+  async function finalizeUndoVote() {
+    const state = currentRow?.state;
+    const vote = state?.undoVote;
+    if (!vote) return;
+    const snap = state.undoSnapshot;
+    // Unvoted counts as YES per house rules.
+    let yes = 0;
+    for (const vid of vote.voters) {
+      const v = vote.votes[vid];
+      if (v === true || v === undefined) yes += 1;
+    }
+    const approved = yes >= vote.required && !!snap;
+    const newState = approved
+      ? { ...snap.state, undoSnapshot: null, undoVote: null }
+      : { ...state, undoVote: null };
+    const updated = await updateRoomAtomic(
+      roomCode,
+      { state: newState, version: (currentRow.version || 0) + 1 },
+      currentRow.version,
+    );
+    // If our optimistic update lost the race, another client finalized
+    // first — refetch the winning state and move on.
+    if (!updated) { await refetch(); return; }
+    applyRow(updated);
+  }
+
   function scheduleBotIfNeeded() {
     if (botTimer) { clearTimeout(botTimer); botTimer = null; }
     if (destroyed) return;
     const state = currentRow?.state;
     const lobby = currentRow?.lobby;
     if (!state || state.winner || !lobby) return;
+    // Pause bots while an undo vote is live — otherwise the bot's
+    // setTimeout can fire, apply its action, and (via submitAction's
+    // "new action clears vote" rule) silently cancel the human's
+    // undo request.
+    if (state.undoVote) return;
     const turnSeat = lobby.players?.find((p) => p.id === state.turn);
     if (!turnSeat?.isCpu) return;
 
@@ -383,9 +568,8 @@ function attachRoom({ game, roomCode, myPlayerId, myProfileId, myName, initialRo
 
     submitAction(action) { return submitAction(myPlayerId, action); },
     sendChat,
-    // No undo in the realtime port yet — port from net.js as a follow-up.
-    requestUndo() { return { ok: false, error: 'Undo not yet supported on realtime rooms.' }; },
-    castUndoVote() { return { ok: false, error: 'Undo not yet supported on realtime rooms.' }; },
+    requestUndo() { return handleUndoRequest(myPlayerId); },
+    castUndoVote(yes) { return handleUndoVote(myPlayerId, yes); },
     sendRename(newName) { return this.setName(newName); },
     destroy,
   };
