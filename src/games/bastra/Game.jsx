@@ -118,16 +118,18 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     return () => clearTimeout(t);
   }, [state.version, state.lastMove]);
 
-  // Delay the round-end / match-end overlay so the final move
-  // animation (and any Bastra / good-card banners) can play out first.
-  // The overlay still appears eventually — just after ~2.8s so the
-  // player isn't ripped out of the board the moment the last card
-  // lands. Reset whenever the state transitions back to an in-progress
-  // round (e.g. "Next round" clicked).
+  // Delay the round-end / match-end prompt so the final move animation
+  // (Bastra / good-card banner, capture flight) can play out first.
+  // After the delay the player sees a "Show scoring →" tap prompt —
+  // clicking it opens the full round reveal. This lets the player
+  // absorb the last move instead of being yanked straight into the
+  // scorecard. Resets whenever a new round starts.
   const [overlayReady, setOverlayReady] = useState(false);
+  const [revealOpen, setRevealOpen] = useState(false);
   useEffect(() => {
     const ended = state.roundEnded || !!state.winner;
-    if (!ended) { setOverlayReady(false); return; }
+    if (!ended) { setOverlayReady(false); setRevealOpen(false); return; }
+    setRevealOpen(false);
     const t = setTimeout(() => setOverlayReady(true), 2800);
     return () => clearTimeout(t);
   }, [state.roundEnded, state.winner, state.round]);
@@ -464,7 +466,15 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
 
       {error && <div className="error">{error}</div>}
 
-      {(state.roundEnded || state.winner) && overlayReady && (
+      {(state.roundEnded || state.winner) && overlayReady && !revealOpen && (
+        <div className="bastra-continue-wrap">
+          <button onClick={() => setRevealOpen(true)} style={{ padding: '10px 22px', fontSize: 15 }}>
+            {state.winner ? 'See final standings →' : 'Continue →'}
+          </button>
+        </div>
+      )}
+
+      {(state.roundEnded || state.winner) && overlayReady && revealOpen && (
         <RoundReveal
           state={state}
           myId={myId}

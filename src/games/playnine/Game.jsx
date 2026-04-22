@@ -3,6 +3,13 @@ import { Card, EmptySlot } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { COLUMNS, GRID_SIZE, faceDownCount, scoreBreakdown } from './engine.js';
 
+// After the last play of a hole, we want to (a) flip every player's
+// face-down cards on the board so all scoring is visible on the table,
+// and (b) hold that state for a beat so the player can read each hand
+// before the detailed scorecard opens. BOARD_REVEAL_HOLD_MS controls
+// how long before the Continue button appears.
+const BOARD_REVEAL_HOLD_MS = 2400;
+
 // Row-major index layout: 0..3 top, 4..7 bottom. Column i = [i, i+4].
 const GRID_ORDER = [0, 1, 2, 3, 4, 5, 6, 7];
 const FLIP_ANIM_MS = 460;
@@ -112,6 +119,25 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const discardTop = state.discard[state.discard.length - 1];
   const discardPop = useDiscardPop(discardTop);
 
+  // Two-step reveal: wait for the final move animation to land, then
+  // show a tap-prompt. The scorecard overlay only opens once the user
+  // acknowledges the prompt.
+  const [revealOpen, setRevealOpen] = useState(false);
+  const [promptReady, setPromptReady] = useState(false);
+  useEffect(() => {
+    if (!state.holeEnded) {
+      setRevealOpen(false);
+      setPromptReady(false);
+      return;
+    }
+    setRevealOpen(false);
+    setPromptReady(false);
+    const t = setTimeout(() => setPromptReady(true), BOARD_REVEAL_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [state.holeEnded, state.hole, state.winner]);
+
+  const showTableReveal = !!state.holeEnded;
+
   const handleSlotClick = (slot) => {
     if (!isMyTurn) return;
     if (isTeeOff) {
@@ -185,7 +211,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
               <span className="p9-opp-name">{op.name}</span>
               <span className="p9-opp-score">{op.cumulativeScore || 0}{op.puttedOut ? ' · out' : ''}</span>
             </div>
-            <PlayerGrid player={op} />
+            <PlayerGrid player={op} revealAll={showTableReveal} />
           </div>
         ))}
       </div>
@@ -223,16 +249,21 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
       <div className={`p9-prompt ${isMyTurn ? 'active' : ''}`}>{prompt}</div>
 
       <div className="p9-actions">
-        {isMyTurn && state.phase === 'play' && !me.drawn && fdLeft === 1 && !state.puttingOutBy && (
+        {state.holeEnded && promptReady && !revealOpen && (
+          <button onClick={() => setRevealOpen(true)} style={{ padding: '10px 22px', fontSize: 15 }}>
+            {state.winner ? 'See final scorecard →' : 'Continue →'}
+          </button>
+        )}
+        {!state.holeEnded && isMyTurn && state.phase === 'play' && !me.drawn && fdLeft === 1 && !state.puttingOutBy && (
           <button className="secondary" onClick={onSkip}>Skip (line up your putt)</button>
         )}
-        {isMyTurn && me?.drawn != null && me.drawnSource === 'deck' && !flipMode && (
+        {!state.holeEnded && isMyTurn && me?.drawn != null && me.drawnSource === 'deck' && !flipMode && (
           <button className="secondary" onClick={enterFlipMode}>Discard + flip a card</button>
         )}
-        {isMyTurn && flipMode && (
+        {!state.holeEnded && isMyTurn && flipMode && (
           <button className="secondary" onClick={cancelFlipMode}>Cancel</button>
         )}
-        {state.undoSnapshot?.actor === myId && !state.holeEnded && (
+        {!state.holeEnded && state.undoSnapshot?.actor === myId && (
           <button className="secondary" onClick={() => onAction({ type: 'undo' })}>Undo</button>
         )}
       </div>
@@ -245,6 +276,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         <PlayerGrid
           player={me}
           onSlotClick={isMyTurn ? handleSlotClick : undefined}
+          revealAll={showTableReveal}
         />
         <div className="p9-my-score-row">
           <span style={{ color: 'var(--muted)' }}>{fdLeft} face-down left</span>
@@ -257,7 +289,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         <Chat messages={chatMessages} onSend={onSendChat} />
       )}
 
-      {state.holeEnded && (
+      {state.holeEnded && revealOpen && (
         <RoundReveal state={state} myId={myId} onNext={() => onAction({ type: 'nextHole' })} onLeave={onLeave} />
       )}
     </div>
@@ -268,6 +300,7 @@ function labelFor(v) {
   if (v === -5) return 'Hole-in-One (-5)';
   return String(v);
 }
+
 
 // End-of-hole reveal modeled on the physical Play Nine scorecard:
 // one row per hole, one column per player, running total at the

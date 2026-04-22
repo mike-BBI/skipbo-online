@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm --version)",
-      "Bash(npm create *)"
+      "Bash(npm create *)",
+      "Bash(node src/games/thirtyone/engine.test.mjs)"
     ]
   }
 }

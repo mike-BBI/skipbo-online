@@ -4,6 +4,7 @@ import { Stats } from './Stats.jsx';
 import { skipboGame } from './games/skipbo/index.js';
 import { bastraGame } from './games/bastra/index.js';
 import { playnineGame } from './games/playnine/index.js';
+import { thirtyoneGame } from './games/thirtyone/index.js';
 
 // Thin error boundary so a render crash inside the game (e.g. during
 // the end-of-round reveal) surfaces the real exception instead of
@@ -61,6 +62,7 @@ const GAMES = {
   skipbo: skipboGame,
   bastra: bastraGame,
   playnine: playnineGame,
+  thirtyone: thirtyoneGame,
 };
 
 // Resolve once at module load. The ?game= param survives reloads and
@@ -403,7 +405,7 @@ export default function App() {
     // Let the active game pick its own per-action cadence (Skip-Bo
     // plays fast plays + slow discards; Bastra slows everything since
     // each turn is a single card).
-    const delay = currentGame.botActionDelay ? currentGame.botActionDelay(act) : 1500;
+    const delay = currentGame.botActionDelay ? currentGame.botActionDelay(act, state) : 1500;
     cpuTimerRef.current = setTimeout(() => {
       const res = applyAction(state, state.turn, act);
       if (!res.ok) {
@@ -684,6 +686,68 @@ export default function App() {
               {mode === 'target'
                 ? `First to ${targetScore} wins.`
                 : `Highest score after ${targetRounds} round${targetRounds === 1 ? '' : 's'} wins.`}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
+            <button className="secondary" onClick={goHome} style={{ flex: 1 }}>Back</button>
+            <button onClick={startPractice} style={{ flex: 2 }}>Start game</button>
+          </div>
+          {error && <div className="error">{error}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === 'practice-setup' && currentGame.id === 'thirtyone') {
+    const humanName = name.trim() || 'You';
+    const maxCpus = Math.min(currentGame.maxPlayers - 1, 5);
+    const safeCpus = Math.max(1, Math.min(cpuCount, maxCpus));
+    const playerCount = 1 + safeCpus;
+    const startingLives = practiceRules.startingLives ?? currentGame.defaultRules.startingLives ?? 3;
+    const lifeOptions = [[2, 2], [3, 3], [4, 4], [5, 5]];
+    const knockerPenalty = practiceRules.knockerPenalty ?? currentGame.defaultRules.knockerPenalty ?? 2;
+    const knockerOptions = [['−2 lives (classic)', 2], ['−1 life (soft)', 1]];
+    const patchRules = (patch) => setPracticeRules((r) => ({ ...currentGame.defaultRules, ...r, ...patch }));
+    return (
+      <div className="app">
+        <div className="lobby">
+          <h1 style={{ fontSize: 32 }}>Thirty-One vs CPU</h1>
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Players</div>
+            <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+              {humanName} + {safeCpus} CPU{safeCpus === 1 ? '' : 's'} ({playerCount} total)
+            </div>
+            <PracticeRuleRow
+              label="CPU opponents"
+              value={safeCpus}
+              options={Array.from({ length: maxCpus }, (_, i) => [i + 1, i + 1])}
+              onChange={(v) => setCpuCount(v)}
+            />
+            <CpuDifficultyList
+              count={safeCpus}
+              values={cpuDifficulties}
+              onChange={setCpuDifficultyAt}
+            />
+          </div>
+          <div className="card-panel">
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Rules</div>
+            <PracticeRuleRow
+              label="Starting lives"
+              value={startingLives}
+              options={lifeOptions}
+              onChange={(v) => patchRules({ startingLives: v })}
+            />
+            <PracticeRuleRow
+              label="Knocker-lowest penalty"
+              value={knockerPenalty}
+              options={knockerOptions}
+              onChange={(v) => patchRules({ knockerPenalty: v })}
+            />
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+              3 cards, best same-suit sum wins. Three of a kind = 30. Hit 31
+              to blitz (others lose a life). Knock to call showdown — if
+              you're lowest you lose {knockerPenalty} life{knockerPenalty === 1 ? '' : 's'}. Last
+              player with lives wins.
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 400 }}>
