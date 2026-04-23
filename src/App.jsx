@@ -392,10 +392,15 @@ export default function App() {
     if (state.turn === HUMAN_ID) return;
     const difficulty = state.players[state.turn]?.cpuDifficulty || 'normal';
     const plan = cpuPlan(state, state.turn, difficulty);
-    playCpuActions(state, plan, 0);
+    // Delay the first CPU action by the turn-announcement banner
+    // duration (see .turn-announcement in styles.css, ~900ms) so the
+    // flight / fly-in animations don't step on the banner. Passed as
+    // a "headStart" to playCpuActions which adds it only to i===0.
+    const TURN_BANNER_MS = 950;
+    playCpuActions(state, plan, 0, TURN_BANNER_MS);
   }
 
-  function playCpuActions(state, actions, i) {
+  function playCpuActions(state, actions, i, headStart = 0) {
     if (i >= actions.length) {
       // Pause between CPU turns so the final move reads clearly.
       cpuTimerRef.current = setTimeout(() => scheduleCpuTurn(state), currentGame.botBetweenTurns ?? 900);
@@ -405,7 +410,8 @@ export default function App() {
     // Let the active game pick its own per-action cadence (Skip-Bo
     // plays fast plays + slow discards; Bastra slows everything since
     // each turn is a single card).
-    const delay = currentGame.botActionDelay ? currentGame.botActionDelay(act, state) : 1500;
+    const baseDelay = currentGame.botActionDelay ? currentGame.botActionDelay(act, state) : 1500;
+    const delay = baseDelay + (i === 0 ? headStart : 0);
     cpuTimerRef.current = setTimeout(() => {
       const res = applyAction(state, state.turn, act);
       if (!res.ok) {
@@ -418,6 +424,8 @@ export default function App() {
       playCpuActions(res.state, actions, i + 1);
     }, delay);
   }
+  // (headStart only applies to the first action of a turn; follow-up
+  // actions use the normal cadence.)
 
   const onStart = async () => {
     const res = await net?.startGame?.();

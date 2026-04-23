@@ -344,12 +344,13 @@ function applyReplace(state, playerId, action) {
   if (err) return { ok: false, error: err };
 
   const replaced = p.grid[action.slot];
+  const placed = p.drawn;
   p.grid[action.slot] = p.drawn;
   p.flipped[action.slot] = true;
   state.discard.push(replaced);
   p.drawn = null;
   p.drawnSource = null;
-  return { ok: true };
+  return { ok: true, card: placed, replacedCard: replaced };
 }
 
 function applyDiscardAndFlip(state, playerId, action) {
@@ -464,6 +465,17 @@ export function applyAction(state, playerId, action) {
   if (!res.ok) return { ok: false, error: res.error, state };
 
   next.undoSnapshot = { state: pre, actor: playerId };
+  // Stamp a lastAction marker so the UI can trigger directive
+  // animations (card flying from deck → in-hand, hand → grid slot,
+  // grid → discard) keyed on the stamp so they replay each action.
+  next.lastAction = {
+    type: action.type,
+    playerId,
+    slot: action.slot ?? null,
+    card: res.card ?? null,
+    replacedCard: res.replacedCard ?? null,
+    stamp: (state.lastAction?.stamp || 0) + 1,
+  };
 
   if (action.type === 'teeOffFlip') {
     next.version = (next.version || 0) + 1;

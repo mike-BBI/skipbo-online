@@ -47,21 +47,33 @@ function useFlipTracker(player) {
   return pulsing;
 }
 
-function PlayerGrid({ player, highlightSlots = [], onSlotClick, revealAll = false }) {
+function PlayerGrid({ player, highlightSlots = [], onSlotClick, revealAll = false, placedSlot = null, placedKey = 0, isSelf = false }) {
   const flipping = useFlipTracker(player);
   return (
     <div className="p9-grid">
       {GRID_ORDER.map((i) => {
         const isFaceUp = revealAll || player.flipped[i];
         const onClick = onSlotClick ? () => onSlotClick(i) : undefined;
+        // Two different animation paths for the target slot:
+        // - "placed": a replace action just put a new card here — slide
+        //   the new card in from the hand direction (above the grid for
+        //   self, below for opponents) while flipping face-up. Keyed on
+        //   placedKey so it replays every time a new card is placed.
+        // - "flipping-in": normal face-down → face-up (teeOffFlip or
+        //   discardAndFlip), a simple reveal without a slide-in.
+        const justPlaced = i === placedSlot;
+        const animClass = justPlaced
+          ? `p9-placed ${isSelf ? 'from-above' : 'from-below'}`
+          : (flipping.has(i) ? 'flipping-in' : '');
+        const key = justPlaced ? `${i}-placed-${placedKey}` : i;
         return (
           <Card
-            key={i}
+            key={key}
             card={isFaceUp ? player.grid[i] : null}
             faceDown={!isFaceUp}
             onClick={onClick}
             selected={highlightSlots.includes(i)}
-            animationClass={flipping.has(i) ? 'flipping-in' : ''}
+            animationClass={animClass}
           />
         );
       })}
@@ -118,6 +130,18 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const drawPulse = useDrawPulse(state.deck?.length);
   const discardTop = state.discard[state.discard.length - 1];
   const discardPop = useDiscardPop(discardTop);
+
+  // Derive per-player "just placed" slot from lastAction so each grid
+  // can replay the placed-from-hand animation without needing refs or
+  // imperative positioning. Keyed by lastAction.stamp so a repeated
+  // slot still retriggers the animation.
+  const lastAction = state.lastAction;
+  const placedStamp = lastAction?.stamp || 0;
+  const placedSlotFor = (playerId) => (
+    lastAction && lastAction.playerId === playerId && lastAction.type === 'replace'
+      ? lastAction.slot
+      : null
+  );
 
   // Two-step reveal: wait for the final move animation to land, then
   // show a tap-prompt. The scorecard overlay only opens once the user
@@ -183,7 +207,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     } else if (me.drawnSource === 'discard') {
       prompt = `You picked up ${labelFor(me.drawn)}. Tap a card to swap it in.`;
     } else {
-      prompt = `Drew ${labelFor(me.drawn)}. Tap a card to swap, or discard it and flip one.`;
+      prompt = `Drew ${labelFor(me.drawn)}. Tap a card to swap, or tap the discard to toss it.`;
     }
   } else {
     prompt = `${state.players[state.turn]?.name || 'Someone'}'s turn.`;
@@ -211,7 +235,13 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
               <span className="p9-opp-name">{op.name}</span>
               <span className="p9-opp-score">{op.cumulativeScore || 0}{op.puttedOut ? ' · out' : ''}</span>
             </div>
-            <PlayerGrid player={op} revealAll={showTableReveal} />
+            <PlayerGrid
+              player={op}
+              revealAll={showTableReveal}
+              placedSlot={placedSlotFor(op.id)}
+              placedKey={placedStamp}
+              isSelf={false}
+            />
           </div>
         ))}
       </div>
@@ -229,7 +259,11 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         <div className="p9-drawn">
           <div className="p9-drawn-label">In hand</div>
           {me?.drawn != null
-            ? <Card card={me.drawn} />
+            ? <Card
+                key={`hand-${placedStamp}-${me.drawnSource}`}
+                card={me.drawn}
+                animationClass={me.drawnSource === 'deck' ? 'p9-drawn-from-deck' : 'p9-drawn-from-discard'}
+              />
             : <EmptySlot />
           }
         </div>
@@ -238,10 +272,18 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           {discardTop != null
             ? <Card
                 card={discardTop}
-                onClick={isMyTurn && !isTeeOff && !me.drawn ? onDrawDiscard : undefined}
+                onClick={
+                  isMyTurn && !isTeeOff && !me.drawn
+                    ? onDrawDiscard
+                    : (isMyTurn && me?.drawn != null && me.drawnSource === 'deck' && !flipMode
+                        ? () => setFlipMode(true)
+                        : undefined)
+                }
                 animationClass={discardPop ? 'discard-pop' : ''}
               />
-            : <EmptySlot />
+            : (isMyTurn && me?.drawn != null && me.drawnSource === 'deck' && !flipMode
+                ? <EmptySlot onClick={() => setFlipMode(true)} />
+                : <EmptySlot />)
           }
         </div>
       </div>
@@ -257,11 +299,8 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         {!state.holeEnded && isMyTurn && state.phase === 'play' && !me.drawn && fdLeft === 1 && !state.puttingOutBy && (
           <button className="secondary" onClick={onSkip}>Skip (line up your putt)</button>
         )}
-        {!state.holeEnded && isMyTurn && me?.drawn != null && me.drawnSource === 'deck' && !flipMode && (
-          <button className="secondary" onClick={enterFlipMode}>Discard + flip a card</button>
-        )}
         {!state.holeEnded && isMyTurn && flipMode && (
-          <button className="secondary" onClick={cancelFlipMode}>Cancel</button>
+          <button className="secondary" onClick={cancelFlipMode}>Cancel discard</button>
         )}
         {!state.holeEnded && state.undoSnapshot?.actor === myId && (
           <button className="secondary" onClick={() => onAction({ type: 'undo' })}>Undo</button>
@@ -277,6 +316,9 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           player={me}
           onSlotClick={isMyTurn ? handleSlotClick : undefined}
           revealAll={showTableReveal}
+          placedSlot={placedSlotFor(myId)}
+          placedKey={placedStamp}
+          isSelf={true}
         />
         <div className="p9-my-score-row">
           <span style={{ color: 'var(--muted)' }}>{fdLeft} face-down left</span>

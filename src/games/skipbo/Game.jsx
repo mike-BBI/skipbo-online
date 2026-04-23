@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Card, EmptySlot, Stockpile, DiscardPile, Deck } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { canPlayToBuild, SKIPBO } from './engine.js';
@@ -47,6 +47,73 @@ function seededShuffle(seed, arr) {
   return out;
 }
 
+// Directive-flight animations for OPPONENT moves only. When a CPU or
+// remote player performs an action, we animate a "ghost" card flying
+// from the source (opponent stock / mini-hand / discard pile) to the
+// destination (build pile or their own discard pile) so the move is
+// easy to follow. Self moves already have clear tap → land feedback
+// (and their normal .fly-in animation at the build pile) so no flight
+// is spawned for them.
+//
+// Flight is rendered at the target card's own dimensions so it can
+// hand off to the real card at its resting place with no size jump.
+// We measure the actual .sb-card inside each target wrapper rather
+// than the wrapper itself (the wrapper for an opponent discard pile
+// spans the whole vertical cascade, which would make the flight way
+// too tall).
+const FLIGHT_MS = 800;
+
+// Absolute-positioned "ghost" card that tweens from the source rect to
+// the target rect via CSS transition. Size is fixed so it reads as a
+// small card in motion regardless of what element we measured on each
+// end. Purely decorative — the actual state change still flows through
+// React normally.
+function FlyingCard({ card, from, to, duration, targetKind }) {
+  const [landed, setLanded] = useState(false);
+  useEffect(() => {
+    const f1 = requestAnimationFrame(() => {
+      const f2 = requestAnimationFrame(() => setLanded(true));
+      return () => cancelAnimationFrame(f2);
+    });
+    return () => cancelAnimationFrame(f1);
+  }, []);
+  if (!from || !to) return null;
+  // Flight sized to match the target card's actual dimensions so the
+  // final landed frame IS the resting card. Start position centers
+  // that target-sized ghost on the source.
+  const w = to.width;
+  const h = to.height;
+  const startX = from.left + from.width / 2 - w / 2;
+  const startY = from.top + from.height / 2 - h / 2;
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  const style = {
+    position: 'fixed',
+    left: startX,
+    top: startY,
+    width: w,
+    height: h,
+    pointerEvents: 'none',
+    zIndex: 500,
+    transition: `transform ${duration}ms cubic-bezier(0.33, 0, 0.2, 1)`,
+    transform: landed ? `translate(${dx}px, ${dy}px)` : 'translate(0, 0)',
+    willChange: 'transform',
+  };
+  // Give the flight wrapper a scope class so the inner card inherits
+  // the destination's text sizes / border weight. We can't reuse
+  // `.opponent` for this — that class also paints a green-gradient
+  // panel background + border + padding, which showed up around the
+  // flight card as a "container". `.sb-flight-opponent` applies only
+  // the card-scale cascade (via our own CSS block) without any panel
+  // styling.
+  const scopeClass = targetKind === 'oppDiscard' ? 'sb-flight-opponent' : '';
+  return (
+    <div style={style} className={`sb-flight-wrap ${scopeClass}`} aria-hidden="true">
+      <Card card={card} />
+    </div>
+  );
+}
+
 // selection: { from: 'hand'|'stock'|'discard', index?: number }
 export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMessages, onSendChat, onLeave, error, hideChat }) {
   const [selection, setSelection] = useState(null);
@@ -63,6 +130,173 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
 
   const me = state.players[myId];
   const isMyTurn = state.turn === myId && !state.winner;
+
+  // Opponent-action flight overlay. Self moves already have clear
+  // tap → land feedback so no flight is needed; but opponent moves
+  // just pop numbers onto build piles with no visible motion, which
+  // is hard to track. When state.version advances and the previous
+  // turn was NOT me, diff the state to find source (opp stock /
+  // opp mini-hand / opp discard pile) and target (build pile OR
+  // opp discard pile), then fly a ghost card between them.
+  const [flights, setFlights] = useState([]);
+  const oppStockRefs = useRef({});    // [playerId] → el
+  const oppHandRefs = useRef({});     // [playerId] → el
+  const oppDiscardRefs = useRef({});  // [`${playerId}:${i}`] → el
+  const buildPileRefs = useRef({});
+  const prevStateRef = useRef(state);
+
+  // useLayoutEffect (not useEffect) so the flights array is updated
+  // synchronously after DOM mutations but BEFORE the browser paints.
+  // That means the target-hiding logic applies in the same paint as
+  // the state update — the new card never flashes at the destination
+  // before the flight starts.
+  useLayoutEffect(() => {
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
+    if (!prev || prev.version === state.version) return;
+    // Only animate actions made by non-self players. Self actions
+    // already have clear tap → card-lands feedback.
+    const actor = prev.turn; // turn BEFORE the action was applied
+    if (!actor || actor === myId) return;
+    const prevP = prev.players[actor];
+    const curP = state.players[actor];
+    if (!prevP || !curP) return;
+
+    // Find source: did the actor's stock, a discard pile, or hand
+    // shrink? (Or, for plays from hand: hand count also drops.)
+    let source = null;
+    let card = null;
+    if (curP.stock.length < prevP.stock.length) {
+      source = { kind: 'stock', key: actor };
+      card = prevP.stock[prevP.stock.length - 1];
+    } else if (curP.hand.length < prevP.hand.length) {
+      source = { kind: 'hand', key: actor };
+      // We don't know which hand index the opponent played — just use
+      // the mini-hand as the visual source. Card is inferred from
+      // destination diff below.
+    } else {
+      // Check discard piles
+      for (let i = 0; i < prevP.discards.length; i += 1) {
+        if (curP.discards[i].length < prevP.discards[i].length) {
+          source = { kind: 'discard', key: `${actor}:${i}` };
+          card = prevP.discards[i][prevP.discards[i].length - 1];
+          break;
+        }
+      }
+    }
+    if (!source) return;
+
+    // Find destination: a build pile or one of actor's discard piles.
+    let target = null;
+    for (let i = 0; i < state.buildPiles.length; i += 1) {
+      if (state.buildPiles[i].length > prev.buildPiles[i].length) {
+        target = { kind: 'build', key: i };
+        if (card == null) card = state.buildPiles[i][state.buildPiles[i].length - 1];
+        break;
+      }
+    }
+    if (!target) {
+      for (let i = 0; i < curP.discards.length; i += 1) {
+        if (curP.discards[i].length > prevP.discards[i].length) {
+          target = { kind: 'oppDiscard', key: `${actor}:${i}` };
+          if (card == null) card = curP.discards[i][curP.discards[i].length - 1];
+          break;
+        }
+      }
+    }
+    if (!target || card == null) return;
+
+    // Resolve rects via the appropriate refs. For discard piles the
+    // wrapper spans a tall cascade (card × stack-height), so we pick
+    // the top-most visible .sb-card inside instead — that's the single
+    // card-sized slot where a new card actually lands.
+    const get = (el) => (el && el.getBoundingClientRect ? el.getBoundingClientRect() : null);
+    const resolveSrc = () => {
+      if (source.kind === 'stock') {
+        const wrap = oppStockRefs.current[source.key];
+        const card = wrap?.querySelector('.sb-card');
+        return rectAtAnchor(wrap, card, 'top');
+      }
+      if (source.kind === 'hand') return get(oppHandRefs.current[source.key]);
+      if (source.kind === 'discard') {
+        const wrap = oppDiscardRefs.current[source.key];
+        const card = wrap?.querySelector('.sb-card:last-of-type');
+        return rectAtAnchor(wrap, card, 'bottom');
+      }
+      return null;
+    };
+    // Target positioning helper:
+    //   - If there's a card element to measure, use its ACTUAL rendered
+    //     rect (getBoundingClientRect). This is the truth — whatever
+    //     size and position the target card has, the flight will land
+    //     on it.
+    //   - If the target slot is empty (build pile, empty discard),
+    //     derive a card-sized rect from the wrapper's position + CSS
+    //     --card-w/h so the flight still lands at a plausible slot.
+    const rectAtAnchor = (wrap, cardEl, anchor /* 'top' | 'bottom' */) => {
+      if (!wrap) return null;
+      if (cardEl) {
+        const r = cardEl.getBoundingClientRect();
+        return {
+          left: r.left, top: r.top, width: r.width, height: r.height,
+          right: 0, bottom: 0, x: 0, y: 0,
+        };
+      }
+      const w = wrap.getBoundingClientRect();
+      const cs = getComputedStyle(wrap);
+      const cardW = parseFloat(cs.getPropertyValue('--card-w')) || w.width;
+      const cardH = parseFloat(cs.getPropertyValue('--card-h')) || w.height;
+      return {
+        left: w.left + w.width / 2 - cardW / 2,
+        top: anchor === 'bottom' ? w.bottom - cardH : w.top,
+        width: cardW, height: cardH,
+        right: 0, bottom: 0, x: 0, y: 0,
+      };
+    };
+    const resolveTgt = () => {
+      if (target.kind === 'build') {
+        const wrap = buildPileRefs.current[target.key];
+        const card = wrap?.querySelector('.sb-card');
+        return rectAtAnchor(wrap, card, 'top');
+      }
+      if (target.kind === 'oppDiscard') {
+        // We're occluding opp discards now, so the DOM currently shows
+        // the cascade MINUS the new top. Measure the last rendered
+        // card (the previous top) and add one cascade offset (3px in
+        // compact / opponent mode) to get where the new card will
+        // land. If there's no prior card (empty pile), anchor at the
+        // wrapper's top.
+        const wrap = oppDiscardRefs.current[target.key];
+        const last = wrap?.querySelector('.sb-card:last-of-type');
+        const cs = wrap ? getComputedStyle(wrap) : null;
+        const cardW = cs ? parseFloat(cs.getPropertyValue('--card-w')) : 0;
+        const cardH = cs ? parseFloat(cs.getPropertyValue('--card-h')) : 0;
+        if (last) {
+          const r = last.getBoundingClientRect();
+          const CASCADE_OFFSET = 3; // compact mode
+          return {
+            left: r.left, top: r.top + CASCADE_OFFSET,
+            width: cardW || r.width, height: cardH || r.height,
+            right: 0, bottom: 0, x: 0, y: 0,
+          };
+        }
+        // Empty pile — anchor at wrapper top, card-sized.
+        return rectAtAnchor(wrap, null, 'top');
+      }
+      return null;
+    };
+    const sRect = resolveSrc();
+    const tRect = resolveTgt();
+    if (!sRect || !tRect) return;
+
+    const id = `flight-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    setFlights((f) => [...f, { id, card, sourceRect: sRect, targetRect: tRect, target }]);
+    const t = setTimeout(() => {
+      setFlights((f) => f.filter((x) => x.id !== id));
+    }, FLIGHT_MS + 40);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.version]);
   // Opponents stay in fixed turn order — scroll-into-view snaps to the
   // active player so you can track whose turn it is without reordering
   // the pane (which was visually disorienting mid-game).
@@ -85,15 +319,27 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
 
   // Flash a banner each time the turn changes so the next player is
   // obviously signaled. Keyed so it remounts and re-animates on every
-  // hand-off.
+  // hand-off. We defer the banner firing until any in-flight card
+  // animations for the PREVIOUS turn have landed — otherwise the
+  // banner appears over the top of the prior player's still-moving
+  // discard flight, which reads as a cut. If there are no flights in
+  // progress (e.g. at game start), the banner fires immediately.
   const [turnAnnounceKey, setTurnAnnounceKey] = useState(0);
-  const lastTurnRef = useRef(state.turn);
+  // Initialize to a sentinel so the FIRST render of the Game component
+  // (game start) also fires the banner for whoever goes first.
+  const lastTurnRef = useRef(null);
+  const pendingTurnRef = useRef(false);
   useEffect(() => {
     if (lastTurnRef.current !== state.turn) {
       lastTurnRef.current = state.turn;
+      pendingTurnRef.current = true;
+    }
+    // Fire if no flights are pending.
+    if (pendingTurnRef.current && flights.length === 0) {
+      pendingTurnRef.current = false;
       setTurnAnnounceKey((k) => k + 1);
     }
-  }, [state.turn]);
+  }, [state.turn, flights.length]);
 
   // Completed-pile animation: when a build pile transitions from
   // non-empty to empty, briefly render the top card (retrieved from
@@ -131,15 +377,16 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
     }
   }, [state.buildPiles, state.completedPiles]);
 
-  // Bump a key each time the hand grows so the cards remount and the
-  // staggered deal animation plays one card at a time.
-  const [dealKey, setDealKey] = useState(0);
-  const prevHandLenRef = useRef(me?.hand.length ?? 0);
+  // Track the hand length BEFORE the most recent state change so we
+  // can deal-animate only the newly-added cards. If the hand goes from
+  // 4 → 5, only index 4 should fly in; the pre-existing 4 cards stay
+  // put. handPrevLen is the snapshot used during THIS render; it
+  // updates to the current length on each render cycle.
+  const handPrevLenRef = useRef(me?.hand.length ?? 0);
+  const handPrevLen = handPrevLenRef.current;
   useEffect(() => {
-    const len = me?.hand.length ?? 0;
-    if (len > prevHandLenRef.current) setDealKey((k) => k + 1);
-    prevHandLenRef.current = len;
-  }, [me?.hand.length]);
+    handPrevLenRef.current = me?.hand.length ?? 0;
+  });
 
   const clearSel = () => setSelection(null);
 
@@ -170,6 +417,41 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
     );
   };
 
+  // Drag activation threshold. Touch fingers regularly jitter 4-10px on
+  // a tap even when the user thinks they held still — previously at 8px
+  // that jitter would flip the gesture into "drag mode" and any pointer-
+  // up not over a drop target would silently cancel the tap. We raise
+  // the threshold and also fall back to tap behavior when a drag ends
+  // off-target, so a tap never gets silently eaten.
+  const DRAG_ACTIVATE_PX = 14;
+
+  // Helper: run the "this was a tap" behavior for the given source.
+  // Factored out so both the no-movement path AND the drag-released-
+  // off-target path can use it.
+  function handleTap(source) {
+    if (source.from === 'discard') {
+      // If a hand card is selected, drop it. If this pile is already
+      // the current selection, toggle it off. Otherwise select this
+      // pile (so the next tap on a build pile plays its top card) and
+      // expand it so the player can see what's underneath.
+      if (selection?.from === 'hand') {
+        onAction({ type: 'discard', handIndex: selection.index, discardPile: source.index });
+        clearSel();
+        setExpandedDiscard(null);
+      } else if (selection?.from === 'discard' && selection.index === source.index) {
+        clearSel();
+        setExpandedDiscard(null);
+      } else if (isMyTurn) {
+        setSelection({ from: 'discard', index: source.index });
+        setExpandedDiscard(source.index);
+      } else {
+        setExpandedDiscard((cur) => (cur === source.index ? null : source.index));
+      }
+    } else {
+      selectIfMine(source);
+    }
+  }
+
   function startDrag(source, e) {
     if (!isMyTurn || state.winner) return;
     const card = e.currentTarget;
@@ -188,7 +470,7 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
       if (!d || ev.pointerId !== d.pointerId) return;
       const dx = ev.clientX - d.startX;
       const dy = ev.clientY - d.startY;
-      const active = d.active || Math.hypot(dx, dy) > 8;
+      const active = d.active || Math.hypot(dx, dy) > DRAG_ACTIVATE_PX;
       let overTarget = null;
       if (active) {
         const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-drop]');
@@ -205,30 +487,12 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
       setDrag(null);
       if (d.active && d.overTarget) {
         commitDrop(d.source, d.overTarget);
-      } else if (!d.active) {
-        // Treat as a tap.
-        if (d.source.from === 'discard') {
-          // If a hand card is selected, drop it. If this pile is already
-          // the current selection, toggle it off. Otherwise make this
-          // pile the selection (so the next tap on a build pile plays
-          // its top card) and expand it so the player can see what's
-          // underneath.
-          if (selection?.from === 'hand') {
-            onAction({ type: 'discard', handIndex: selection.index, discardPile: d.source.index });
-            clearSel();
-            setExpandedDiscard(null);
-          } else if (selection?.from === 'discard' && selection.index === d.source.index) {
-            clearSel();
-            setExpandedDiscard(null);
-          } else if (isMyTurn) {
-            setSelection({ from: 'discard', index: d.source.index });
-            setExpandedDiscard(d.source.index);
-          } else {
-            setExpandedDiscard((cur) => (cur === d.source.index ? null : d.source.index));
-          }
-        } else {
-          selectIfMine(d.source);
-        }
+      } else {
+        // Either the gesture never passed the drag threshold (a clean
+        // tap) or it became a drag but was released off any drop target.
+        // In both cases, fall through to tap behavior so the gesture
+        // isn't silently eaten.
+        handleTap(d.source);
       }
     };
     card.addEventListener('pointermove', onMove);
@@ -252,6 +516,73 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
     onAction({ type: 'play', from: selection.from, index: selection.index, buildPile: bpIdx });
     clearSel();
   };
+
+  // Targets currently occluded — render them in their PRE-action
+  // appearance (empty / previous top) while a flight is in progress so
+  // the card never pops in at the destination before the flight
+  // arrives. We occlude in TWO phases:
+  //   1. Existing flights in state.flights (mid-animation).
+  //   2. Any build pile / opp discard whose content grew vs the PREV
+  //      state in this same render. This handles the very first render
+  //      of a new state — the flight isn't created until useLayoutEffect
+  //      runs AFTER commit, so without this pre-occlusion the new top
+  //      would flash for one frame before the flight overlaid it.
+  const hiddenBuildTargets = new Set();
+  const hiddenOppDiscardTargets = new Set();
+  for (const f of flights) {
+    if (f.target?.kind === 'build') hiddenBuildTargets.add(f.target.key);
+    else if (f.target?.kind === 'oppDiscard') hiddenOppDiscardTargets.add(f.target.key);
+  }
+  // Opponent discards that just grew via an opponent action. We now
+  // OCCLUDE them the same way we occlude build piles — render the
+  // pre-action cascade so the new card doesn't pop in at the bottom
+  // before the flight arrives. The occlusion is added synchronously
+  // during this render (via state diff), one frame before the flight
+  // is registered in useLayoutEffect.
+  const prevStateSnapshot = prevStateRef.current;
+  if (prevStateSnapshot && prevStateSnapshot.version !== state.version && prevStateSnapshot.turn && prevStateSnapshot.turn !== myId) {
+    // Build pile: occlude so the card doesn't pop in at the destination.
+    for (let i = 0; i < state.buildPiles.length; i += 1) {
+      const prevLen = prevStateSnapshot.buildPiles?.[i]?.length || 0;
+      if (state.buildPiles[i].length > prevLen) hiddenBuildTargets.add(i);
+    }
+    // Opp discards: occlude the just-grown ones too.
+    for (const opId of state.playerOrder) {
+      if (opId === myId) continue;
+      const prevOp = prevStateSnapshot.players?.[opId];
+      const curOp = state.players?.[opId];
+      if (!prevOp || !curOp) continue;
+      for (let i = 0; i < curOp.discards.length; i += 1) {
+        const prevLen = prevOp.discards?.[i]?.length || 0;
+        if (curOp.discards[i].length > prevLen) hiddenOppDiscardTargets.add(`${opId}:${i}`);
+      }
+    }
+  }
+
+  // Track which build piles were most recently UPDATED by an opponent
+  // action (vs a self action). Opponent-placed tops should never play
+  // `.fly-in` because the flight animation already provided their
+  // motion; applying fly-in afterward (or on a later unrelated re-
+  // render) would double-animate. Self-placed tops keep `.fly-in` so
+  // the player's own plays still have the normal pop-in feel. The set
+  // is cleared for a pile when it completes (length 12 → 0) or when
+  // the player places a new top on it.
+  const buildPileOpponentPlacedRef = useRef(new Set());
+  if (prevStateSnapshot && prevStateSnapshot.version !== state.version) {
+    const isSelfActor = prevStateSnapshot.turn === myId;
+    for (let i = 0; i < state.buildPiles.length; i += 1) {
+      const prevLen = prevStateSnapshot.buildPiles?.[i]?.length || 0;
+      const curLen = state.buildPiles[i].length;
+      if (curLen > prevLen) {
+        // Pile grew
+        if (isSelfActor) buildPileOpponentPlacedRef.current.delete(i);
+        else buildPileOpponentPlacedRef.current.add(i);
+      } else if (curLen === 0 && prevLen > 0) {
+        // Pile completed and reset
+        buildPileOpponentPlacedRef.current.delete(i);
+      }
+    }
+  }
 
   const undoVote = state.undoVote;
   const isUndoVoter = undoVote && undoVote.voters.includes(myId) && myId !== undoVote.requester;
@@ -340,17 +671,35 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
           >
             <div className="opp-header">
               <span className="opp-name">{op.name}</span>
-              <MiniHand count={op.hand.length} />
+              <span ref={(el) => { oppHandRefs.current[op.id] = el; }}>
+                <MiniHand count={op.hand.length} />
+              </span>
             </div>
             <div className="opp-body">
-              <Stockpile
-                topCard={op.stock[op.stock.length - 1]}
-                count={op.stock.length}
-              />
+              <div ref={(el) => { oppStockRefs.current[op.id] = el; }}>
+                <Stockpile
+                  topCard={op.stock[op.stock.length - 1]}
+                  count={op.stock.length}
+                />
+              </div>
               <div className="discard-row opp-discards">
-                {op.discards.map((d, i) => (
-                  <DiscardPile key={i} cards={d} compact />
-                ))}
+                {op.discards.map((d, i) => {
+                  const key = `${op.id}:${i}`;
+                  const occluded = hiddenOppDiscardTargets.has(key);
+                  // Render the pre-action cascade while a flight is in
+                  // motion toward this pile so the new card doesn't
+                  // appear at the bottom before the flight lands.
+                  const displayD = occluded ? d.slice(0, -1) : d;
+                  return (
+                    <div
+                      key={i}
+                      ref={(el) => { oppDiscardRefs.current[key] = el; }}
+                      className={occluded ? 'opp-flight-target' : ''}
+                    >
+                      <DiscardPile cards={displayD} compact />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -373,15 +722,33 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
             const playable = effectiveSelectedCard != null && canPlayToBuild(effectiveSelectedCard, bp);
             const dragOver = drag?.active && drag.overTarget === `build:${i}`;
             const completing = completingPiles.find((c) => c.pileIdx === i);
+            const occluded = hiddenBuildTargets.has(i);
+            // While a flight is heading to this pile, render the
+            // pre-action state (the previous top, or empty) so the card
+            // doesn't visibly pop in at the destination before the
+            // flight animates on top of it.
+            const displayBp = occluded ? bp.slice(0, -1) : bp;
+            // Apply .fly-in (the normal pop-in on a new top) ONLY when
+            // the current top was placed by the player themselves. For
+            // opponent-placed tops, the flight overlay already provided
+            // the motion; adding fly-in would re-animate on every
+            // subsequent render.
+            const skipFlyIn = buildPileOpponentPlacedRef.current.has(i);
+            const topAnimClass = skipFlyIn ? '' : 'fly-in';
             return (
-              <div key={i} className="build-pile" data-drop={`build:${i}`}>
+              <div
+                key={i}
+                className="build-pile"
+                data-drop={`build:${i}`}
+                ref={(el) => { buildPileRefs.current[i] = el; }}
+              >
                 {completing ? (
                   <Card key={completing.key} card={completing.card} className="pile-complete" />
-                ) : bp.length > 0
+                ) : displayBp.length > 0
                   ? <BuildPileTop
-                      bp={bp}
+                      bp={displayBp}
                       onClick={() => onBuildPile(i)}
-                      className={`fly-in ${playable ? 'target' : ''} ${dragOver ? 'drop-hover' : ''}`}
+                      className={`${topAnimClass} ${playable ? 'target' : ''} ${dragOver ? 'drop-hover' : ''}`}
                     />
                   : <EmptySlot onClick={() => onBuildPile(i)} className={`${playable ? 'target' : ''} ${dragOver ? 'drop-hover' : ''}`} label={(selection || drag?.active) ? 'Play 1' : ''} />
                 }
@@ -394,7 +761,10 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
       <div className="my-area">
         <div className="my-stock-wrap">
           <div className="my-section-label">Your stock</div>
-          <div onPointerDown={(e) => me.stock.length > 0 && startDrag({ from: 'stock' }, e)} style={{ touchAction: 'none' }}>
+          <div
+            onPointerDown={(e) => me.stock.length > 0 && startDrag({ from: 'stock' }, e)}
+            style={{ touchAction: 'none' }}
+          >
             <Stockpile
               topCard={me.stock[me.stock.length - 1]}
               count={me.stock.length}
@@ -404,36 +774,29 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
           </div>
         </div>
 
-        <div className="my-discards-wrap">
-          <div className="my-section-label">Your discard piles</div>
-          <div className="discard-row">
-            {me.discards.map((d, i) => {
-              const isSelected = selection?.from === 'discard' && selection.index === i;
-              const targetable = selection?.from === 'hand' || (drag?.active && drag.source.from === 'hand');
-              const dragOver = drag?.active && drag.overTarget === `discard:${i}`;
-              const isExpanded = expandedDiscard === i;
-              // For empty piles (no cards to drag), use onClick so tap
-              // still triggers the discard-drop action.
-              const onEmptyClick = () => {
-                if (selection?.from === 'hand') {
-                  onAction({ type: 'discard', handIndex: selection.index, discardPile: i });
-                  clearSel();
-                }
-              };
+        <div className="hand-wrap">
+          <div className="my-section-label">Your hand ({me.hand.length})</div>
+          <div className="hand">
+            {me.hand.length === 0 && <span style={{ color: 'var(--muted)' }}>Empty</span>}
+            {me.hand.map((c, i) => {
+              const isDragging = drag?.active && drag.source.from === 'hand' && drag.source.index === i;
+              // Only apply the deal animation to cards that weren't in
+              // the hand on the previous render. i >= handPrevLen means
+              // this slot is newly-added. Previously-held cards stay
+              // put with no re-animation.
+              const isNew = i >= handPrevLen;
+              const newIdx = i - handPrevLen;
               return (
                 <div
                   key={i}
-                  data-drop={`discard:${i}`}
-                  onPointerDown={(e) => d.length > 0 && startDrag({ from: 'discard', index: i }, e)}
-                  onClick={d.length === 0 ? onEmptyClick : undefined}
+                  onPointerDown={(e) => startDrag({ from: 'hand', index: i }, e)}
                   style={{ touchAction: 'none' }}
-                  className={dragOver ? 'drop-hover-wrap' : ''}
                 >
-                  <DiscardPile
-                    cards={d}
-                    selected={isSelected}
-                    targetable={targetable}
-                    expanded={isExpanded}
+                  <Card
+                    card={c}
+                    selected={selection?.from === 'hand' && selection.index === i}
+                    className={`${isNew ? 'dealing' : ''} ${isDragging ? 'card-dragging' : ''}`}
+                    style={isNew ? { animationDelay: `${newIdx * 150}ms` } : undefined}
                   />
                 </div>
               );
@@ -442,23 +805,34 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
         </div>
       </div>
 
-      <div className="hand-wrap">
-        <div className="my-section-label">Your hand ({me.hand.length})</div>
-        <div className="hand" key={dealKey}>
-          {me.hand.length === 0 && <span style={{ color: 'var(--muted)' }}>Empty</span>}
-          {me.hand.map((c, i) => {
-            const isDragging = drag?.active && drag.source.from === 'hand' && drag.source.index === i;
+      <div className="my-discards-wrap">
+        <div className="my-section-label">Your discard piles</div>
+        <div className="discard-row">
+          {me.discards.map((d, i) => {
+            const isSelected = selection?.from === 'discard' && selection.index === i;
+            const targetable = selection?.from === 'hand' || (drag?.active && drag.source.from === 'hand');
+            const dragOver = drag?.active && drag.overTarget === `discard:${i}`;
+            const isExpanded = expandedDiscard === i;
+            const onEmptyClick = () => {
+              if (selection?.from === 'hand') {
+                onAction({ type: 'discard', handIndex: selection.index, discardPile: i });
+                clearSel();
+              }
+            };
             return (
               <div
                 key={i}
-                onPointerDown={(e) => startDrag({ from: 'hand', index: i }, e)}
+                data-drop={`discard:${i}`}
+                onPointerDown={(e) => d.length > 0 && startDrag({ from: 'discard', index: i }, e)}
+                onClick={d.length === 0 ? onEmptyClick : undefined}
                 style={{ touchAction: 'none' }}
+                className={dragOver ? 'drop-hover-wrap' : ''}
               >
-                <Card
-                  card={c}
-                  selected={selection?.from === 'hand' && selection.index === i}
-                  className={`dealing ${isDragging ? 'card-dragging' : ''}`}
-                  style={{ animationDelay: `${i * 90}ms` }}
+                <DiscardPile
+                  cards={d}
+                  selected={isSelected}
+                  targetable={targetable}
+                  expanded={isExpanded}
                 />
               </div>
             );
@@ -478,6 +852,10 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
       <div className="log">
         {state.log.slice(-8).map((line, i) => <div key={i}>{line}</div>)}
       </div>
+
+      {flights.map((f) => (
+        <FlyingCard key={f.id} card={f.card} from={f.sourceRect} to={f.targetRect} duration={FLIGHT_MS} targetKind={f.target?.kind} />
+      ))}
 
       {state.winner && (
         <div className="winner-overlay">

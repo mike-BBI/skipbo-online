@@ -547,7 +547,7 @@
 html, body, #root {
   margin: 0;
   padding: 0;
-  height: 100%;
+  min-height: 100%;
   background:
     radial-gradient(ellipse at top, #14543f 0%, var(--bg) 55%, var(--bg-2) 100%);
   color: var(--text);
@@ -555,6 +555,8 @@ html, body, #root {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
+html { height: 100%; }
+body { background-attachment: fixed; }
 
 button {
   font: inherit;
@@ -898,8 +900,9 @@ select { width: auto; padding: 6px 8px; }
   padding-right: 16px;
 }
 .my-discards-wrap {
-  flex: 1;
-  min-width: 0;
+  background: rgba(0,0,0,0.15);
+  border-radius: 12px;
+  padding: 10px;
   /* Slightly smaller than the hand cards so the two zones read as
      distinct at a glance rather than one continuous row of cards. */
   --card-w: 52px;
@@ -916,12 +919,12 @@ select { width: auto; padding: 6px 8px; }
   padding-bottom: 6px;
 }
 
-/* Hand */
+/* Hand lives inside .my-area next to the stockpile. No background /
+   border — the parent .my-area already provides the container; a
+   nested box would read as a double-container. */
 .hand-wrap {
-  background: rgba(0,0,0,0.25);
-  border-radius: 12px;
-  padding: 10px;
-  border: 1px solid #2a5a48;
+  flex: 1;
+  min-width: 0;
 }
 .hand {
   display: flex;
@@ -1260,15 +1263,74 @@ select { width: auto; padding: 6px 8px; }
   outline-offset: 2px;
 }
 
-/* Staggered deal animation for hand cards. The hand's keyed container
-   remounts on draw so each card's animation fires once. */
+/* Staggered deal animation for hand cards. Cards fly in from the deck
+   in the upper-left of the board — a clear "being dealt out" motion
+   rather than a subtle fade. The hand's keyed container remounts on
+   draw so each card's animation fires once, and per-card animation-
+   delay (set inline in the JSX) staggers them so they arrive one at
+   a time. */
 .sb-card.dealing {
-  animation: dealCard 320ms cubic-bezier(0.2, 0.7, 0.3, 1.05) backwards;
+  animation: dealCard 520ms cubic-bezier(0.2, 0.7, 0.3, 1.05) backwards;
 }
 @keyframes dealCard {
-  0%   { transform: translate(-12px, -36px) rotate(-8deg) scale(0.8); opacity: 0; }
-  60%  { opacity: 1; }
+  0%   { transform: translate(-260px, -220px) rotate(-18deg) scale(0.55); opacity: 0; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+  15%  { opacity: 1; }
+  80%  { transform: translate(4px, 2px) rotate(1deg) scale(1.04); }
   100% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; }
+}
+@media (max-width: 600px) {
+  @keyframes dealCard {
+    0%   { transform: translate(-140px, -160px) rotate(-18deg) scale(0.55); opacity: 0; }
+    15%  { opacity: 1; }
+    80%  { transform: translate(4px, 2px) rotate(1deg) scale(1.04); }
+    100% { transform: translate(0, 0) rotate(0) scale(1); opacity: 1; }
+  }
+}
+
+/* Flying card overlay: the outer wrapper sets an explicit pixel size
+   via JSX style (matches target --card-w/h). We force the inner
+   .sb-card to match, overriding its default var(--card-w) sizing —
+   the fixed position breaks cascade from the board. Inner text
+   inherits from the media-query cascade. */
+.sb-flight-wrap {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.sb-flight-wrap .sb-card {
+  width: 100% !important;
+  height: 100% !important;
+}
+/* Flights targeting opp discards need the opponent text/card scale
+   without the green-gradient `.opponent` panel background/border/padding.
+   This class cascades ONLY the size-related vars and the inner text
+   size tweaks. */
+.sb-flight-opponent {
+  --card-w: 42px;
+  --card-h: 63px;
+  --card-radius: 5px;
+}
+.sb-flight-opponent .sb-card { border-width: 0.5px; }
+.sb-flight-opponent .sb-card .center { font-size: 20px; letter-spacing: -1px; }
+.sb-flight-opponent .sb-card .corner { font-size: 10px; }
+.sb-flight-opponent .sb-card.wild .wild-logo { font-size: 6px; letter-spacing: 0; }
+.sb-flight-opponent .sb-card.wild .sb-badge { width: 10px; height: 10px; font-size: 5px; border-width: 1px; box-shadow: 0 0 0 1px #dc2626; }
+@media (max-width: 600px) {
+  .sb-flight-opponent { --card-w: 34px; --card-h: 50px; --card-radius: 4px; }
+  .sb-flight-opponent .sb-card .center { font-size: 16px; }
+  .sb-flight-opponent .sb-card .corner { font-size: 8px; }
+}
+/* Opponents now get their "card arrived" motion via the flight
+   overlay, not the built-in .fly-in. Suppress .fly-in on every
+   opponent card so it doesn't play — (a) during the flight (would
+   double-animate), (b) after the flight lands (removing the class
+   would restart the animation). */
+.opponent .sb-card.fly-in,
+.opp-flight-target .sb-card.fly-in {
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
 }
 
 /* A card appearing at the top of a build pile or discard pile — it
@@ -1386,11 +1448,13 @@ select { width: auto; padding: 6px 8px; }
 
 /* Flash banner that announces whose turn it is, keyed to remount on
    every turn change. Tinted by the new player's hue so you can glance
-   at it and know who's up. */
+   at it and know who's up. Duration: 900ms (kept short so gameplay
+   isn't delayed; CPU actions are paused for the same duration so the
+   banner is never stepped on). */
 @keyframes turn-announce {
   0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.65); }
-  10%  { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
-  20%  { transform: translate(-50%, -50%) scale(1); }
+  18%  { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+  30%  { transform: translate(-50%, -50%) scale(1); }
   75%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
 }
@@ -1410,7 +1474,7 @@ select { width: auto; padding: 6px 8px; }
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
   z-index: 100;
   pointer-events: none;
-  animation: turn-announce 1.9s ease-out forwards;
+  animation: turn-announce 900ms ease-out forwards;
 }
 .turn-banner.waiting {
   background: var(--panel-2);
@@ -2208,6 +2272,53 @@ select { width: auto; padding: 6px 8px; }
   100% { transform: perspective(400px) scaleX(1) rotateY(0deg); opacity: 1; }
 }
 
+/* Replace action: the placed card slides in from the "in hand" slot's
+   direction (above for self, below for opponents) and settles with a
+   small overshoot. This is a directive animation — the motion itself
+   tells the player that the card came from the hand/center area, not
+   just "appeared". */
+.p9-card.p9-placed {
+  transform-origin: center;
+}
+.p9-card.p9-placed.from-above {
+  animation: p9-placed-from-above 540ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+}
+.p9-card.p9-placed.from-below {
+  animation: p9-placed-from-below 540ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+}
+@keyframes p9-placed-from-above {
+  0%   { transform: translate(0, -200px) scale(0.5) rotate(-6deg); opacity: 0.2; box-shadow: 0 14px 24px rgba(0,0,0,0.6); }
+  40%  { opacity: 1; }
+  70%  { transform: translate(0, 10px) scale(1.08) rotate(1deg); }
+  85%  { transform: translate(0, -3px) scale(1.02) rotate(0deg); }
+  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes p9-placed-from-below {
+  0%   { transform: translate(0, 200px) scale(0.5) rotate(6deg); opacity: 0.2; box-shadow: 0 14px 24px rgba(0,0,0,0.6); }
+  40%  { opacity: 1; }
+  70%  { transform: translate(0, -10px) scale(1.08) rotate(-1deg); }
+  85%  { transform: translate(0, 3px) scale(1.02) rotate(0deg); }
+  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+}
+
+/* Drawn-in-hand animation: the "In hand" slot's card slides in from the
+   deck (left) or discard (right) so it's clear where the pickup came
+   from. Added as a direction-specific class keyed on the draw action. */
+.p9-card.p9-drawn-from-deck {
+  animation: p9-drawn-from-deck 420ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+}
+.p9-card.p9-drawn-from-discard {
+  animation: p9-drawn-from-discard 420ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+}
+@keyframes p9-drawn-from-deck {
+  0%   { transform: translate(-130px, 0) scale(0.7) rotate(-8deg); opacity: 0.3; }
+  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes p9-drawn-from-discard {
+  0%   { transform: translate(130px, 0) scale(0.7) rotate(8deg); opacity: 0.3; }
+  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+}
+
 /* Pulse on the deck when a card is drawn off it. */
 .p9-card.draw-pulse {
   animation: p9-draw-pulse 420ms ease;
@@ -2770,6 +2881,13 @@ select { width: auto; padding: 6px 8px; }
   0%, 100% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.55), 0 20px 50px rgba(0,0,0,0.55); }
   50%      { box-shadow: 0 0 0 11px rgba(52, 211, 153, 0.85), 0 20px 50px rgba(0,0,0,0.55); }
 }
+
+/* Thirty-One flight overlay for opponent moves — absolute-positioned
+   ghost card that tweens from source to target. Inner PlayingCard
+   fills the wrapper; no background/border so only the card is
+   visible in flight. */
+.t31-flight-wrap { background: transparent; border: 0; padding: 0; }
+.t31-flight-wrap .pc { width: 100% !important; height: 100% !important; }
 
 /* ───────── Thirty-One card-movement animations ───────── */
 
