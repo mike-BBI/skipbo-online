@@ -2129,6 +2129,10 @@ select { width: auto; padding: 6px 8px; }
   gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
+  /* Reserve vertical space for the tallest button row so the grid
+     below doesn't jump when Undo / Skip / Continue appear or clear. */
+  min-height: 44px;
+  align-items: center;
 }
 
 .p9-my-grid-wrap {
@@ -2272,51 +2276,46 @@ select { width: auto; padding: 6px 8px; }
   100% { transform: perspective(400px) scaleX(1) rotateY(0deg); opacity: 1; }
 }
 
-/* Replace action: the placed card slides in from the "in hand" slot's
-   direction (above for self, below for opponents) and settles with a
-   small overshoot. This is a directive animation — the motion itself
-   tells the player that the card came from the hand/center area, not
-   just "appeared". */
-.p9-card.p9-placed {
-  transform-origin: center;
+/* Full-flight ghost card: portal-rendered over document.body,
+   translates from a source DOM rect to a destination DOM rect. The
+   real destination card renders behind a .p9-hidden stub for the
+   duration of the flight so the ghost appears to deliver the card. */
+.p9-flight {
+  /* positioned and transform-transitioned via inline style */
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55));
 }
-.p9-card.p9-placed.from-above {
-  animation: p9-placed-from-above 540ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+.p9-flight .p9-card {
+  width: 100%;
+  height: 100%;
+  cursor: default;
 }
-.p9-card.p9-placed.from-below {
-  animation: p9-placed-from-below 540ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
-}
-@keyframes p9-placed-from-above {
-  0%   { transform: translate(0, -200px) scale(0.5) rotate(-6deg); opacity: 0.2; box-shadow: 0 14px 24px rgba(0,0,0,0.6); }
-  40%  { opacity: 1; }
-  70%  { transform: translate(0, 10px) scale(1.08) rotate(1deg); }
-  85%  { transform: translate(0, -3px) scale(1.02) rotate(0deg); }
-  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
-}
-@keyframes p9-placed-from-below {
-  0%   { transform: translate(0, 200px) scale(0.5) rotate(6deg); opacity: 0.2; box-shadow: 0 14px 24px rgba(0,0,0,0.6); }
-  40%  { opacity: 1; }
-  70%  { transform: translate(0, -10px) scale(1.08) rotate(-1deg); }
-  85%  { transform: translate(0, 3px) scale(1.02) rotate(0deg); }
-  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+.p9-card.p9-hidden {
+  visibility: hidden;
 }
 
-/* Drawn-in-hand animation: the "In hand" slot's card slides in from the
-   deck (left) or discard (right) so it's clear where the pickup came
-   from. Added as a direction-specific class keyed on the draw action. */
-.p9-card.p9-drawn-from-deck {
-  animation: p9-drawn-from-deck 420ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+/* Opponent's "hand" slot between their name and their grid. When the
+   opponent has a drawn card, it renders here; otherwise it's an
+   invisible anchor whose rect still serves as the flight endpoint. */
+.p9-opp-hand {
+  --p9-card-w: 40px;
+  --p9-card-h: 56px;
+  width: 40px;
+  height: 56px;
+  margin: 2px auto 4px;
+  pointer-events: none;
 }
-.p9-card.p9-drawn-from-discard {
-  animation: p9-drawn-from-discard 420ms cubic-bezier(0.2, 0.8, 0.25, 1.05);
+.p9-opp-hand.empty { opacity: 0; }
+@media (max-width: 700px) {
+  .p9-opp-hand { --p9-card-w: 34px; --p9-card-h: 48px; width: 34px; height: 48px; }
 }
-@keyframes p9-drawn-from-deck {
-  0%   { transform: translate(-130px, 0) scale(0.7) rotate(-8deg); opacity: 0.3; }
-  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
-}
-@keyframes p9-drawn-from-discard {
-  0%   { transform: translate(130px, 0) scale(0.7) rotate(8deg); opacity: 0.3; }
-  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+
+/* When a flight is landing at an opponent card, mirror the fixed
+   font-size override that `.p9-opponent .p9-card .p9-card-center`
+   sets — without this the ghost (portal-rendered to body) would use
+   the calc(--p9-card-w * 0.62) default and read as oversized. */
+.p9-flight-opp .p9-card .p9-card-center { font-size: 18px; }
+@media (max-width: 700px) {
+  .p9-flight-opp .p9-card .p9-card-center { font-size: 15px; }
 }
 
 /* Pulse on the deck when a card is drawn off it. */

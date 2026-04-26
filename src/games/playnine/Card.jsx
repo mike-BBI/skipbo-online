@@ -30,6 +30,7 @@ export function Card({
   animationClass,
   className = '',
   style,
+  dataAttrs,
 }) {
   const classes = ['p9-card'];
   if (faceDown || card == null) classes.push('face-down');
@@ -49,6 +50,7 @@ export function Card({
       onClick={onClick}
       style={style}
       aria-label={faceDown ? 'face-down card' : `card ${label}`}
+      {...(dataAttrs || {})}
     >
       {!faceDown && card != null && (
         <span className="p9-card-center">{label}</span>
@@ -58,6 +60,14 @@ export function Card({
 }
 
 // Render an empty slot (e.g., when the deck has run out).
-export function EmptySlot({ label = '', className = '' }) {
-  return <div className={`p9-card empty ${className}`}>{label}</div>;
+export function EmptySlot({ label = '', className = '', dataAttrs, onClick }) {
+  return (
+    <div
+      className={`p9-card empty ${className} ${onClick ? 'clickable' : ''}`}
+      onClick={onClick}
+      {...(dataAttrs || {})}
+    >
+      {label}
+    </div>
+  );
 }

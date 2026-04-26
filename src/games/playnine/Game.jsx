@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { Card, EmptySlot } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { COLUMNS, GRID_SIZE, faceDownCount, scoreBreakdown } from './engine.js';
+import { FlightLayer, FLIGHT_MS } from './Flight.jsx';
 
 // After the last play of a hole, we want to (a) flip every player's
 // face-down cards on the board so all scoring is visible on the table,
@@ -47,33 +48,28 @@ function useFlipTracker(player) {
   return pulsing;
 }
 
-function PlayerGrid({ player, highlightSlots = [], onSlotClick, revealAll = false, placedSlot = null, placedKey = 0, isSelf = false }) {
+function PlayerGrid({ player, highlightSlots = [], onSlotClick, revealAll = false, hiddenSlots = null }) {
   const flipping = useFlipTracker(player);
   return (
     <div className="p9-grid">
       {GRID_ORDER.map((i) => {
         const isFaceUp = revealAll || player.flipped[i];
         const onClick = onSlotClick ? () => onSlotClick(i) : undefined;
-        // Two different animation paths for the target slot:
-        // - "placed": a replace action just put a new card here — slide
-        //   the new card in from the hand direction (above the grid for
-        //   self, below for opponents) while flipping face-up. Keyed on
-        //   placedKey so it replays every time a new card is placed.
-        // - "flipping-in": normal face-down → face-up (teeOffFlip or
-        //   discardAndFlip), a simple reveal without a slide-in.
-        const justPlaced = i === placedSlot;
-        const animClass = justPlaced
-          ? `p9-placed ${isSelf ? 'from-above' : 'from-below'}`
+        // Active flight targeting this slot — hide its content so the
+        // ghost card appears to "deliver" the new card.
+        const hidden = hiddenSlots && hiddenSlots.has(i);
+        const animClass = hidden
+          ? 'p9-hidden'
           : (flipping.has(i) ? 'flipping-in' : '');
-        const key = justPlaced ? `${i}-placed-${placedKey}` : i;
         return (
           <Card
-            key={key}
+            key={i}
             card={isFaceUp ? player.grid[i] : null}
             faceDown={!isFaceUp}
             onClick={onClick}
             selected={highlightSlots.includes(i)}
             animationClass={animClass}
+            dataAttrs={{ 'data-p9-slot': `${player.id}-${i}` }}
           />
         );
       })}
@@ -97,20 +93,101 @@ function useDrawPulse(deckLen) {
   return pulse;
 }
 
-// Brief animation on the discard when its top changes (new card landed).
-function useDiscardPop(top) {
-  const prev = useRef(top);
-  const [pop, setPop] = useState(false);
-  useEffect(() => {
-    if (top !== undefined && prev.current !== top) {
-      setPop(true);
-      const t = setTimeout(() => setPop(false), 360);
-      prev.current = top;
-      return () => clearTimeout(t);
+// Given a new `lastAction`, returns the list of flights that should
+// fire to illustrate it. Each flight has source/destination selectors
+// and whatever card value the ghost should show while in flight. For
+// opponent draws from the deck, the ghost is face-down so we don't
+// leak information the real player wouldn't see.
+function planFlights(action, state, myId) {
+  if (!action) return [];
+  const pid = action.playerId;
+  const isSelf = pid === myId;
+  const handSel = `[data-p9-hand="${pid}"]`;
+  const deckSel = '[data-p9-pile="deck"]';
+  const discardSel = '[data-p9-pile="discard"]';
+  const slotSel = action.slot != null ? `[data-p9-slot="${pid}-${action.slot}"]` : null;
+
+  switch (action.type) {
+    case 'drawDeck': {
+      const drawnVal = state.players[pid]?.drawn;
+      return [{
+        id: `fl-${action.stamp}-a`,
+        fromSelector: deckSel,
+        toSelector: handSel,
+        card: isSelf ? drawnVal : null,
+        faceDown: !isSelf,
+        destKey: `hand-${pid}`,
+        sourceKey: null,
+      }];
     }
-    prev.current = top;
-  }, [top]);
-  return pop;
+    case 'drawDiscard': {
+      const drawnVal = state.players[pid]?.drawn;
+      return [{
+        id: `fl-${action.stamp}-a`,
+        fromSelector: discardSel,
+        toSelector: handSel,
+        card: drawnVal,
+        faceDown: false,
+        destKey: `hand-${pid}`,
+        sourceKey: null,
+      }];
+    }
+    case 'replace': {
+      // Two parallel flights:
+      //   hand → slot (the placed card)
+      //   slot → discard (the card that was in that slot)
+      const placed = action.card;
+      const replaced = action.replacedCard;
+      return [
+        {
+          id: `fl-${action.stamp}-a`,
+          fromSelector: handSel,
+          toSelector: slotSel,
+          card: placed,
+          faceDown: false,
+          destKey: `slot-${pid}-${action.slot}`,
+          sourceKey: `hand-${pid}`,
+        },
+        {
+          id: `fl-${action.stamp}-b`,
+          fromSelector: slotSel,
+          toSelector: discardSel,
+          card: replaced,
+          faceDown: false,
+          destKey: `discard-${action.stamp}`,
+          sourceKey: null,
+        },
+      ];
+    }
+    case 'discardAndFlip': {
+      const discarded = state.discard[state.discard.length - 1];
+      return [{
+        id: `fl-${action.stamp}-a`,
+        fromSelector: handSel,
+        toSelector: discardSel,
+        card: discarded,
+        faceDown: false,
+        destKey: `discard-${action.stamp}`,
+        sourceKey: `hand-${pid}`,
+      }];
+    }
+    case 'skip': {
+      // Conceptually: draw from deck, then drop straight onto discard.
+      // Fly deck → discard so the user sees the move happen.
+      const discarded = state.discard[state.discard.length - 1];
+      return [{
+        id: `fl-${action.stamp}-a`,
+        fromSelector: deckSel,
+        toSelector: discardSel,
+        card: discarded,
+        faceDown: false,
+        destKey: `discard-${action.stamp}`,
+        sourceKey: null,
+      }];
+    }
+    default:
+      return [];
+  }
 }
 
 export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave, error, hideChat }) {
@@ -127,21 +204,131 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   }, [isMyTurn, me?.drawn]);
 
   const [showChat, setShowChat] = useState(false);
-  const drawPulse = useDrawPulse(state.deck?.length);
-  const discardTop = state.discard[state.discard.length - 1];
-  const discardPop = useDiscardPop(discardTop);
 
-  // Derive per-player "just placed" slot from lastAction so each grid
-  // can replay the placed-from-hand animation without needing refs or
-  // imperative positioning. Keyed by lastAction.stamp so a repeated
-  // slot still retriggers the animation.
-  const lastAction = state.lastAction;
-  const placedStamp = lastAction?.stamp || 0;
-  const placedSlotFor = (playerId) => (
-    lastAction && lastAction.playerId === playerId && lastAction.type === 'replace'
-      ? lastAction.slot
-      : null
-  );
+  // Flight state. `flights` is the active ghost cards. `pending` is a
+  // set of destination keys whose real DOM element should render blank
+  // while the ghost is still on its way.
+  const [flights, setFlights] = useState([]);
+  const [pending, setPending] = useState(() => new Set());
+  const [sourceHidden, setSourceHidden] = useState(() => new Set());
+  const [previewLanded, setPreviewLanded] = useState(false);
+  const lastStampRef = useRef(state.lastAction?.stamp || 0);
+  const flipModeRef = useRef(false);
+  // When the player taps the discard pile (entering flip mode) with a
+  // deck-drawn card, we fire a preview flight from hand → discard so
+  // the "toss" is visible immediately rather than waiting for the
+  // face-down pick. That means when the discardAndFlip action fires
+  // on the subsequent slot click, we must suppress the normal
+  // hand→discard flight so the motion doesn't play twice.
+  const discardFlightSuppressedRef = useRef(false);
+
+  // Use useLayoutEffect so `pending` is set before the browser paints
+  // the post-action DOM — otherwise there'd be a one-frame flash of
+  // the destination card in its final slot before the flight starts.
+  useLayoutEffect(() => {
+    const action = state.lastAction;
+    if (!action) return;
+    const stamp = action.stamp || 0;
+    if (stamp <= lastStampRef.current) return;
+    lastStampRef.current = stamp;
+
+    let planned = planFlights(action, state, myId);
+    if (action.type === 'discardAndFlip'
+        && action.playerId === myId
+        && discardFlightSuppressedRef.current) {
+      planned = [];
+      discardFlightSuppressedRef.current = false;
+    }
+    if (planned.length === 0) return;
+
+    setFlights((fs) => [...fs, ...planned]);
+    setPending((s) => {
+      const next = new Set(s);
+      for (const f of planned) if (f.destKey) next.add(f.destKey);
+      return next;
+    });
+    setSourceHidden((s) => {
+      const next = new Set(s);
+      for (const f of planned) if (f.sourceKey) next.add(f.sourceKey);
+      return next;
+    });
+  }, [state.lastAction?.stamp]);
+
+  // Preview flight: fires when flipMode enters (tap discard) and
+  // cleans up when it exits (either via discardAndFlip action or
+  // Cancel). Defined AFTER the action scheduler so that on a slot
+  // click the action scheduler runs with `discardFlightSuppressedRef`
+  // still true, then this effect resets the flag.
+  useLayoutEffect(() => {
+    if (flipMode && !flipModeRef.current) {
+      flipModeRef.current = true;
+      discardFlightSuppressedRef.current = true;
+      if (me?.drawn == null) return;
+      const flight = {
+        id: `preview-discard-${Date.now()}`,
+        fromSelector: `[data-p9-hand="${myId}"]`,
+        toSelector: '[data-p9-pile="discard"]',
+        card: me.drawn,
+        faceDown: false,
+        destKey: 'preview-discard',
+        sourceKey: `hand-${myId}`,
+      };
+      setFlights((fs) => [...fs, flight]);
+      setPending((s) => new Set([...s, 'preview-discard']));
+      setSourceHidden((s) => new Set([...s, `hand-${myId}`]));
+    } else if (!flipMode && flipModeRef.current) {
+      flipModeRef.current = false;
+      discardFlightSuppressedRef.current = false;
+      setPreviewLanded(false);
+      setFlights((fs) => fs.filter((f) => !f.id.startsWith('preview-discard')));
+      setPending((s) => { const n = new Set(s); n.delete('preview-discard'); return n; });
+      setSourceHidden((s) => { const n = new Set(s); n.delete(`hand-${myId}`); return n; });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flipMode]);
+
+  const removeFlight = (id, destKey, sourceKey) => {
+    setFlights((fs) => fs.filter((f) => f.id !== id));
+    if (destKey) {
+      setPending((s) => {
+        const next = new Set(s);
+        next.delete(destKey);
+        return next;
+      });
+      if (destKey === 'preview-discard') setPreviewLanded(true);
+    }
+    if (sourceKey) {
+      setSourceHidden((s) => {
+        const next = new Set(s);
+        next.delete(sourceKey);
+        return next;
+      });
+    }
+  };
+
+  const drawPulse = useDrawPulse(state.deck?.length);
+
+  // If flights are on their way to the discard pile, peel that many
+  // cards off the visible top so the ghost card appears to land
+  // rather than arriving at an already-updated pile. Also peel the
+  // preview-discard flight while it's in the air.
+  const pendingDiscardCount = Array.from(pending)
+    .filter((k) => k.startsWith('discard-') || k === 'preview-discard').length;
+  const discardLen = state.discard?.length ?? 0;
+  // Once the preview has landed, the discard pile should *visually*
+  // show `me.drawn` on top, even though the real state hasn't
+  // committed it yet (the action fires on the next slot tap).
+  const discardTop = (flipMode && previewLanded && me?.drawn != null)
+    ? me.drawn
+    : (discardLen > 0 ? state.discard[Math.max(0, discardLen - 1 - pendingDiscardCount)] : undefined);
+
+  const hiddenSlotsFor = (playerId) => {
+    const set = new Set();
+    for (let i = 0; i < GRID_SIZE; i += 1) {
+      if (pending.has(`slot-${playerId}-${i}`)) set.add(i);
+    }
+    return set.size ? set : null;
+  };
 
   // Two-step reveal: wait for the final move animation to land, then
   // show a tap-prompt. The scorecard overlay only opens once the user
@@ -213,12 +400,17 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     prompt = `${state.players[state.turn]?.name || 'Someone'}'s turn.`;
   }
 
+  const hideSelfHand = pending.has(`hand-${myId}`) || sourceHidden.has(`hand-${myId}`) || flipMode;
+
   return (
     <div className="board playnine" style={{ position: 'relative' }}>
       <div className="p9-top-bar">
         <div>Room <span className="room-code">{state.roomCode || ''}</span></div>
         <div className="p9-hole">Hole {state.hole}/{state.rules?.targetHoles ?? 9}</div>
         <div style={{ display: 'flex', gap: 6 }}>
+          {!state.holeEnded && state.undoSnapshot?.actor === myId && (
+            <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onAction({ type: 'undo' })}>Undo</button>
+          )}
           {!hideChat && (
             <button className="secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => setShowChat((v) => !v)}>
               {showChat ? 'Hide' : 'Chat'}
@@ -229,21 +421,38 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
       </div>
 
       <div className="p9-opponents">
-        {opponents.map((op) => (
-          <div key={op.id} className={`p9-opponent ${op.id === state.turn ? 'active' : ''}`}>
-            <div className="p9-opp-header">
-              <span className="p9-opp-name">{op.name}</span>
-              <span className="p9-opp-score">{op.cumulativeScore || 0}{op.puttedOut ? ' · out' : ''}</span>
+        {opponents.map((op) => {
+          const opHandBusy = pending.has(`hand-${op.id}`) || sourceHidden.has(`hand-${op.id}`);
+          const showOpHandCard = op.drawn != null && !opHandBusy;
+          return (
+            <div key={op.id} className={`p9-opponent ${op.id === state.turn ? 'active' : ''}`}>
+              <div className="p9-opp-header">
+                <span className="p9-opp-name">{op.name}</span>
+                <span className="p9-opp-score">{op.cumulativeScore || 0}{op.puttedOut ? ' · out' : ''}</span>
+              </div>
+              {showOpHandCard ? (
+                <div className="p9-opp-hand">
+                  <Card
+                    card={op.drawnSource === 'discard' ? op.drawn : null}
+                    faceDown={op.drawnSource !== 'discard'}
+                    dataAttrs={{ 'data-p9-hand': op.id }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="p9-opp-hand empty"
+                  data-p9-hand={op.id}
+                  aria-hidden="true"
+                />
+              )}
+              <PlayerGrid
+                player={op}
+                revealAll={showTableReveal}
+                hiddenSlots={hiddenSlotsFor(op.id)}
+              />
             </div>
-            <PlayerGrid
-              player={op}
-              revealAll={showTableReveal}
-              placedSlot={placedSlotFor(op.id)}
-              placedKey={placedStamp}
-              isSelf={false}
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="p9-center">
@@ -254,17 +463,19 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
             faceDown
             onClick={isMyTurn && !isTeeOff && !me.drawn ? onDrawDeck : undefined}
             animationClass={drawPulse ? 'draw-pulse' : ''}
+            dataAttrs={{ 'data-p9-pile': 'deck' }}
           />
         </div>
         <div className="p9-drawn">
           <div className="p9-drawn-label">In hand</div>
-          {me?.drawn != null
+          {me?.drawn != null && !hideSelfHand
             ? <Card
-                key={`hand-${placedStamp}-${me.drawnSource}`}
+                key={`hand-${lastStampRef.current}-${me.drawnSource}`}
                 card={me.drawn}
-                animationClass={me.drawnSource === 'deck' ? 'p9-drawn-from-deck' : 'p9-drawn-from-discard'}
+                animationClass=""
+                dataAttrs={{ 'data-p9-hand': myId }}
               />
-            : <EmptySlot />
+            : <EmptySlot dataAttrs={{ 'data-p9-hand': myId }} />
           }
         </div>
         <div className="p9-pile">
@@ -279,11 +490,11 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
                         ? () => setFlipMode(true)
                         : undefined)
                 }
-                animationClass={discardPop ? 'discard-pop' : ''}
+                dataAttrs={{ 'data-p9-pile': 'discard' }}
               />
             : (isMyTurn && me?.drawn != null && me.drawnSource === 'deck' && !flipMode
-                ? <EmptySlot onClick={() => setFlipMode(true)} />
-                : <EmptySlot />)
+                ? <EmptySlot onClick={() => setFlipMode(true)} dataAttrs={{ 'data-p9-pile': 'discard' }} />
+                : <EmptySlot dataAttrs={{ 'data-p9-pile': 'discard' }} />)
           }
         </div>
       </div>
@@ -302,9 +513,6 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
         {!state.holeEnded && isMyTurn && flipMode && (
           <button className="secondary" onClick={cancelFlipMode}>Cancel discard</button>
         )}
-        {!state.holeEnded && state.undoSnapshot?.actor === myId && (
-          <button className="secondary" onClick={() => onAction({ type: 'undo' })}>Undo</button>
-        )}
       </div>
 
       <div className={`p9-my-grid-wrap ${isMyTurn ? 'active' : ''}`}>
@@ -316,9 +524,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           player={me}
           onSlotClick={isMyTurn ? handleSlotClick : undefined}
           revealAll={showTableReveal}
-          placedSlot={placedSlotFor(myId)}
-          placedKey={placedStamp}
-          isSelf={true}
+          hiddenSlots={hiddenSlotsFor(myId)}
         />
         <div className="p9-my-score-row">
           <span style={{ color: 'var(--muted)' }}>{fdLeft} face-down left</span>
@@ -330,6 +536,8 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
       {!hideChat && showChat && (
         <Chat messages={chatMessages} onSend={onSendChat} />
       )}
+
+      <FlightLayer flights={flights} onComplete={removeFlight} />
 
       {state.holeEnded && revealOpen && (
         <RoundReveal state={state} myId={myId} onNext={() => onAction({ type: 'nextHole' })} onLeave={onLeave} />
