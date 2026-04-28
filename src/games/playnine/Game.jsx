@@ -215,7 +215,38 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const [pending, setPending] = useState(() => new Set());
   const [sourceHidden, setSourceHidden] = useState(() => new Set());
   const [previewLanded, setPreviewLanded] = useState(false);
-  const turnAnnounceKey = useTurnAnnounceKey(state.turn, flights.length);
+  // Pulse counter: any face-down → face-up flip increments for the
+  // duration of the `flipping-in` reveal animation. The turn banner
+  // gates on (flights + flipPulses) so it doesn't flash while a slot
+  // is still revealing — particularly for tee-off and discardAndFlip,
+  // which don't generate flights but DO play flipping-in.
+  const [flipPulses, setFlipPulses] = useState(0);
+  const prevFlippedRef = useRef(null);
+  useEffect(() => {
+    const curr = {};
+    for (const pid of state.playerOrder) {
+      curr[pid] = state.players[pid]?.flipped?.slice() || [];
+    }
+    const prev = prevFlippedRef.current;
+    prevFlippedRef.current = curr;
+    if (!prev) return;
+    let newFlips = 0;
+    for (const pid of state.playerOrder) {
+      const prevF = prev[pid] || [];
+      const currF = curr[pid] || [];
+      for (let i = 0; i < currF.length; i += 1) {
+        if (!prevF[i] && currF[i]) newFlips += 1;
+      }
+    }
+    if (newFlips > 0) {
+      setFlipPulses((c) => c + newFlips);
+      const t = setTimeout(() => setFlipPulses((c) => Math.max(0, c - newFlips)), FLIP_ANIM_MS + 40);
+      // Don't return a cleanup that cancels this timer — the cleanup
+      // would fire on every subsequent state change, leaving flipPulses
+      // stuck above 0 and the banner permanently gated.
+    }
+  }, [state.version]);
+  const turnAnnounceKey = useTurnAnnounceKey(state.turn, flights.length + flipPulses);
   const lastStampRef = useRef(state.lastAction?.stamp || 0);
   const flipModeRef = useRef(false);
   // When the player taps the discard pile (entering flip mode) with a
