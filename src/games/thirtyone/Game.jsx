@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { PlayingCard } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { handScore, bestSuit, cardValue, cardLabel } from './engine.js';
+import { useHueFor, useTurnAnnounceKey, TurnBanner } from '../turnBanner.jsx';
 
 // Opponent flight animation: when a CPU (or remote player) acts, we
 // render a "ghost" card traveling from the source (deck / discard /
@@ -167,6 +168,9 @@ export function Game({
   const oppHandRefs = useRef({});
   const prevLastActionRef = useRef(state.lastAction);
 
+  const hueFor = useHueFor(state);
+  const turnAnnounceKey = useTurnAnnounceKey(state.turn, flights.length);
+
   const prevVersionRef = useRef(state.version || 0);
   useLayoutEffect(() => {
     const curVersion = state.version || 0;
@@ -261,6 +265,13 @@ export function Game({
 
   return (
     <div className={`board thirtyone ${isMyLastTurn ? 't31-last-turn' : ''}`}>
+      <TurnBanner
+        announceKey={turnAnnounceKey}
+        hue={hueFor(state.turn)}
+        name={state.players[state.turn]?.name}
+        isMe={state.turn === myId}
+        hidden={!!state.winner || state.phase === 'roundEnd' || !!bigEvent}
+      />
       {bigEvent && (
         <BigEventBanner event={bigEvent} state={state} myId={myId} />
       )}
@@ -315,7 +326,7 @@ export function Game({
       )}
 
       {me && !me.eliminated && (
-        <ScorePanel hand={me.hand} phase={state.phase} />
+        <ScorePanel hand={me.hand} phase={state.phase} lives={me.lives} />
       )}
 
       <div className="t31-actions">
@@ -548,7 +559,7 @@ function MyHand({ player, state, canDiscard, onDiscard }) {
 
 // ───────────────────────── Score panel ─────────────────────────
 
-function ScorePanel({ hand, phase }) {
+function ScorePanel({ hand, phase, lives }) {
   const score = handScore(hand);
   const best = bestSuit(hand);
   // 4-card intermediate (postDraw): show the peek score but label it.
@@ -563,6 +574,12 @@ function ScorePanel({ hand, phase }) {
           <span className={`t31-score-suit ${SUIT_CLASS[best.suit]}`}>{SUIT_SYMBOL[best.suit]}</span>
         )}
       </div>
+      {typeof lives === 'number' && (
+        <>
+          <div className="t31-score-label">Lives</div>
+          <Lives lives={lives} />
+        </>
+      )}
     </div>
   );
 }

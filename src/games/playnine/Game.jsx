@@ -3,6 +3,7 @@ import { Card, EmptySlot } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { COLUMNS, GRID_SIZE, faceDownCount, scoreBreakdown } from './engine.js';
 import { FlightLayer, FLIGHT_MS } from './Flight.jsx';
+import { useHueFor, useTurnAnnounceKey, TurnBanner } from '../turnBanner.jsx';
 
 // After the last play of a hole, we want to (a) flip every player's
 // face-down cards on the board so all scoring is visible on the table,
@@ -198,6 +199,8 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const isMyTurn = state.turn === myId && !state.holeEnded && !state.winner;
   const isTeeOff = state.phase === 'teeOff';
 
+  const hueFor = useHueFor(state);
+
   const [flipMode, setFlipMode] = useState(false);
   useMemo(() => {
     if (!isMyTurn || !me?.drawn) setFlipMode(false);
@@ -212,6 +215,7 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
   const [pending, setPending] = useState(() => new Set());
   const [sourceHidden, setSourceHidden] = useState(() => new Set());
   const [previewLanded, setPreviewLanded] = useState(false);
+  const turnAnnounceKey = useTurnAnnounceKey(state.turn, flights.length);
   const lastStampRef = useRef(state.lastAction?.stamp || 0);
   const flipModeRef = useRef(false);
   // When the player taps the discard pile (entering flip mode) with a
@@ -404,6 +408,13 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
 
   return (
     <div className="board playnine" style={{ position: 'relative' }}>
+      <TurnBanner
+        announceKey={turnAnnounceKey}
+        hue={hueFor(state.turn)}
+        name={state.players[state.turn]?.name}
+        isMe={state.turn === myId}
+        hidden={!!state.winner || !!state.holeEnded}
+      />
       <div className="p9-top-bar">
         <div>Room <span className="room-code">{state.roomCode || ''}</span></div>
         <div className="p9-hole">Hole {state.hole}/{state.rules?.targetHoles ?? 9}</div>
@@ -425,7 +436,11 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
           const opHandBusy = pending.has(`hand-${op.id}`) || sourceHidden.has(`hand-${op.id}`);
           const showOpHandCard = op.drawn != null && !opHandBusy;
           return (
-            <div key={op.id} className={`p9-opponent ${op.id === state.turn ? 'active' : ''}`}>
+            <div
+              key={op.id}
+              className={`p9-opponent ${op.id === state.turn ? 'active' : ''}`}
+              ref={op.id === state.turn ? (el) => el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }) : null}
+            >
               <div className="p9-opp-header">
                 <span className="p9-opp-name">{op.name}</span>
                 <span className="p9-opp-score">{op.cumulativeScore || 0}{op.puttedOut ? ' · out' : ''}</span>

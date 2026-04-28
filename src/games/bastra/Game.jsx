@@ -2,25 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PlayingCard } from './Card.jsx';
 import { Chat } from '../../Chat.jsx';
 import { isValidCapture, RANK_JACK } from './engine.js';
-
-// Curated hue palette (same spacing idea as Skip-Bo).
-const PLAYER_HUES = [20, 65, 110, 155, 200, 245, 290, 335];
-function seededShuffle(seed, arr) {
-  let s = (seed | 0) || 1;
-  const rand = () => {
-    s |= 0;
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
+import { useHueFor, useTurnAnnounceKey, TurnBanner } from '../turnBanner.jsx';
 
 export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave, error, hideChat }) {
   const [showChat, setShowChat] = useState(false);
@@ -31,12 +13,8 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
     .filter((id) => id !== myId)
     .map((id) => state.players[id]);
 
-  const shuffledPalette = useMemo(() => seededShuffle(state.seed || 0, PLAYER_HUES), [state.seed]);
-  const hueFor = (id) => {
-    const idx = state.playerOrder.indexOf(id);
-    if (idx < 0) return 153;
-    return shuffledPalette[idx % shuffledPalette.length];
-  };
+  const hueFor = useHueFor(state);
+  const turnAnnounceKey = useTurnAnnounceKey(state.turn);
 
   // Interactive capture: click a hand card to select it, then click
   // table cards to build a capture set. Confirm commits; the engine
@@ -174,6 +152,13 @@ export function Game({ state, myId, onAction, chatMessages, onSendChat, onLeave,
 
   return (
     <div className="board bastra">
+      <TurnBanner
+        announceKey={turnAnnounceKey}
+        hue={hueFor(state.turn)}
+        name={state.players[state.turn]?.name}
+        isMe={state.turn === myId}
+        hidden={!!state.winner || !!state.roundEnded}
+      />
       {bastraEvent && (
         <div
           key={bastraEvent.key}
