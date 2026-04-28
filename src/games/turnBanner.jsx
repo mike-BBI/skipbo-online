@@ -41,7 +41,17 @@ export function useHueFor(state) {
 // Pass `flightCount` if the calling game has in-flight card animations
 // — the banner waits for them to land before firing so it doesn't
 // step on an opponent's still-moving discard ghost.
-export function useTurnAnnounceKey(turn, flightCount = 0) {
+//
+// The fire is deferred by `settleMs` (default 120ms). This absorbs the
+// transient render between a state update arriving and the action's
+// useLayoutEffect populating the flights array — without the delay,
+// useEffect can fire ONCE with flightCount=0 (because the flights
+// state hasn't been updated yet in that render) before the next
+// render commits with flights populated. The effect's cleanup
+// correctly cancels the pending timer if flightCount goes back above
+// zero, so the banner only fires after everything has actually
+// settled at zero for the full settle window.
+export function useTurnAnnounceKey(turn, flightCount = 0, settleMs = 120) {
   const [key, setKey] = useState(0);
   const lastTurnRef = useRef(null);
   const pendingRef = useRef(false);
@@ -51,10 +61,13 @@ export function useTurnAnnounceKey(turn, flightCount = 0) {
       pendingRef.current = true;
     }
     if (pendingRef.current && flightCount === 0) {
-      pendingRef.current = false;
-      setKey((k) => k + 1);
+      const t = setTimeout(() => {
+        pendingRef.current = false;
+        setKey((k) => k + 1);
+      }, settleMs);
+      return () => clearTimeout(t);
     }
-  }, [turn, flightCount]);
+  }, [turn, flightCount, settleMs]);
   return key;
 }
 
