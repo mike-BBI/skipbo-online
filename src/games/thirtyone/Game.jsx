@@ -207,10 +207,12 @@ export function Game({
 
     const id = `t31-flight-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setFlights((fs) => [...fs, { id, card, faceDown, fromRect, toRect, occludeDiscardPile, actionType: la.type }]);
-    const t = setTimeout(() => {
+    // Don't return a cleanup that cancels this timer — the cleanup
+    // would fire on every subsequent action, leaving the flight (and
+    // its discard occlusion) stuck in state forever.
+    setTimeout(() => {
       setFlights((fs) => fs.filter((f) => f.id !== id));
     }, FLIGHT_MS + 40);
-    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.lastAction?.stamp]);
 

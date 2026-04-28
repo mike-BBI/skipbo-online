@@ -291,10 +291,15 @@ export function Game({ state, myId, onAction, onRequestUndo, onVoteUndo, chatMes
 
     const id = `flight-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     setFlights((f) => [...f, { id, card, sourceRect: sRect, targetRect: tRect, target }]);
-    const t = setTimeout(() => {
+    // IMPORTANT: do NOT return a cleanup that clears this timer. The
+    // cleanup runs every time `state.version` changes (next action),
+    // which would cancel the in-flight removal — leaving the flight
+    // in the `flights` array forever, which keeps the build pile (or
+    // opp discard) visually peeled for the rest of the game. Per-
+    // flight timers are independent; let each one fire on its own.
+    setTimeout(() => {
       setFlights((f) => f.filter((x) => x.id !== id));
     }, FLIGHT_MS + 40);
-    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.version]);
   // Opponents stay in fixed turn order — scroll-into-view snaps to the
